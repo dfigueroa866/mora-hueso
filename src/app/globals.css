@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ink: #1a1614;
+  --bone: #f6f1e8;
+  --berry: #8b3a4a;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  color: var(--ink);
+  background: var(--bone);
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-sm px-5 py-2.5 text-sm font-medium tracking-wide transition duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-berry text-bone hover:bg-berry-deep focus-visible:outline-berry;
+  }
+  .btn-ink {
+    @apply btn bg-ink text-bone hover:bg-ink-soft focus-visible:outline-ink;
+  }
+  .btn-ghost {
+    @apply btn border border-ink/15 bg-transparent text-ink hover:border-ink/40 hover:bg-ink/5;
+  }
+  .btn-bone {
+    @apply btn bg-bone text-ink hover:bg-bone-warm focus-visible:outline-bone;
+  }
+  .field {
+    @apply w-full rounded-sm border border-ink/15 bg-white/70 px-3 py-2.5 text-sm text-ink placeholder:text-ink-muted/70 outline-none transition focus:border-berry focus:ring-2 focus:ring-berry/20;
+  }
+  .label {
+    @apply mb-1.5 block text-xs font-medium uppercase tracking-[0.12em] text-ink-muted;
+  }
+  .section-pad {
+    @apply mx-auto max-w-6xl px-4 py-14 sm:px-6 lg:px-8;
+  }
+}

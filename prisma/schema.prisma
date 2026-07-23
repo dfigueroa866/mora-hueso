@@ -1,0 +1,95 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Product {
+  id          String      @id @default(cuid())
+  name        String
+  description String
+  price       Float
+  category    String
+  stock       Int
+  sku         String      @unique
+  supplier    String
+  packageSize String
+  dogSize     String
+  ingredients String
+  nutrition   String
+  image       String
+  lowStockAt  Int         @default(10)
+  active      Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  orderItems  OrderItem[]
+}
+
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  password     String
+  phone        String?
+  role         String    @default("customer")
+  resetToken   String?
+  resetExpires DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  addresses    Address[]
+  orders       Order[]
+}
+
+model Address {
+  id         String  @id @default(cuid())
+  userId     String
+  user       User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label      String  @default("Principal")
+  street     String
+  city       String
+  state      String  @default("")
+  postalCode String
+  country    String  @default("México")
+  references String?
+  isDefault  Boolean @default(false)
+}
+
+model Order {
+  id             String      @id @default(cuid())
+  userId         String?
+  user           User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  guestEmail     String?
+  status         String      @default("confirmed")
+  subtotal       Float
+  tax            Float
+  shippingCost   Float
+  total          Float
+  shippingMethod String
+  trackingNumber String
+  shipStreet     String
+  shipCity       String
+  shipState      String  @default("")
+  shipPostalCode String
+  shipCountry    String
+  shipReferences String?
+  billingName    String
+  billingEmail   String
+  cardLast4      String?
+  createdAt      DateTime    @default(now())
+  items          OrderItem[]
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  name      String
+  sku       String
+  quantity  Int
+  price     Float
+}
