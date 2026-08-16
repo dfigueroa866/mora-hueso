@@ -33,10 +33,17 @@ export const SOCIAL_LINKS = [
   {
     name: "Facebook",
     href: "https://www.facebook.com/people/Mora-Hueso/61560327404163/",
+    color: "#1877F2",
   },
   {
     name: "Instagram",
     href: "https://www.instagram.com/morayhueso/",
+    color: "#E1306C",
+  },
+  {
+    name: "WhatsApp",
+    href: "https://wa.me/524493916199",
+    color: "#25D366",
   },
 ] as const;
 
