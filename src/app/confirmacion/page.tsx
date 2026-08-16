@@ -19,15 +19,33 @@ type Order = {
 function ConfirmationInner() {
   const params = useSearchParams();
   const [order, setOrder] = useState<Order | null>(null);
+  const paymentStatus = params.get("status");
 
   useEffect(() => {
     const raw = sessionStorage.getItem("mh_order");
     if (raw) {
       setOrder(JSON.parse(raw));
     }
-  }, []);
+    // Tras volver de Mercado Pago (éxito o pendiente), limpia carrito local
+    if (paymentStatus === "approved" || paymentStatus === "pending" || raw) {
+      try {
+        localStorage.removeItem("mora-hueso-cart");
+      } catch {
+        /* ignore */
+      }
+      sessionStorage.removeItem("mh_shipping");
+    }
+  }, [paymentStatus]);
 
   const tracking = params.get("t") || order?.trackingNumber;
+  const isPending = paymentStatus === "pending";
+  const headline = isPending
+    ? "Pago en proceso"
+    : "¡Gracias por tu compra!";
+  const eyebrow = isPending ? "Pendiente de confirmación" : "Pedido confirmado";
+  const statusNote = isPending
+    ? "Mercado Pago aún está procesando tu pago. Te avisaremos cuando se confirme."
+    : null;
 
   if (!order && !tracking) {
     return (
@@ -44,15 +62,18 @@ function ConfirmationInner() {
   return (
     <div className="section-pad max-w-2xl">
       <p className="animate-fade-in text-xs uppercase tracking-[0.2em] text-sage">
-        Pedido confirmado
+        {eyebrow}
       </p>
       <h1 className="mt-2 animate-fade-up font-display text-4xl font-semibold md:text-5xl">
-        ¡Gracias por tu compra!
+        {headline}
       </h1>
       <p className="mt-4 text-ink-muted">
         Número de seguimiento:{" "}
         <span className="font-medium text-ink">{tracking}</span>
       </p>
+      {statusNote && (
+        <p className="mt-2 text-sm text-ink-muted">{statusNote}</p>
+      )}
       {order?.emailSentTo && (
         <p className="mt-2 text-sm text-ink-muted">
           Enviamos el resumen a{" "}

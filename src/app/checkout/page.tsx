@@ -40,6 +40,12 @@ export default function CheckoutPage() {
     setMounted(true);
     const raw = sessionStorage.getItem("mh_shipping");
     if (raw) setShipping(JSON.parse(raw));
+    const status = new URLSearchParams(window.location.search).get("status");
+    if (status === "failure") {
+      setError(
+        "El pago con Mercado Pago no se completó. Puedes intentar de nuevo."
+      );
+    }
     fetch("/api/auth/me")
       .then((r) => r.json())
       .then((d) => {
@@ -91,6 +97,31 @@ export default function CheckoutPage() {
   const tax = roundMoney(sub * TAX_RATE);
   const total = roundMoney(sub + tax + method.cost);
 
+  function checkoutPayload(includeCard: boolean) {
+    const base = {
+      items: items.map((i) => ({
+        productId: i.productId,
+        quantity: i.quantity,
+      })),
+      shippingMethod: shipping!.shippingMethod,
+      shipStreet: shipping!.street,
+      shipCity: shipping!.city,
+      shipState: shipping!.state,
+      shipPostalCode: shipping!.postalCode,
+      shipCountry: shipping!.country,
+      shipReferences: shipping!.references,
+      billingName: form.billingName,
+      billingEmail: form.billingEmail,
+    };
+    if (!includeCard) return base;
+    return {
+      ...base,
+      cardNumber: form.cardNumber,
+      cardExpiry: form.cardExpiry,
+      cardCvc: form.cardCvc,
+    };
+  }
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
@@ -99,24 +130,7 @@ export default function CheckoutPage() {
       const res = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: items.map((i) => ({
-            productId: i.productId,
-            quantity: i.quantity,
-          })),
-          shippingMethod: shipping!.shippingMethod,
-          shipStreet: shipping!.street,
-          shipCity: shipping!.city,
-          shipState: shipping!.state,
-          shipPostalCode: shipping!.postalCode,
-          shipCountry: shipping!.country,
-          shipReferences: shipping!.references,
-          billingName: form.billingName,
-          billingEmail: form.billingEmail,
-          cardNumber: form.cardNumber,
-          cardExpiry: form.cardExpiry,
-          cardCvc: form.cardCvc,
-        }),
+        body: JSON.stringify(checkoutPayload(true)),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -129,6 +143,33 @@ export default function CheckoutPage() {
       router.push(`/confirmacion?t=${data.order.trackingNumber}`);
     } catch {
       setError("Error de red. Intenta de nuevo.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function payWithMercadoPago() {
+    setError("");
+    if (!form.billingName.trim() || !form.billingEmail.trim()) {
+      setError("Completa nombre y correo antes de pagar con Mercado Pago.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch("/api/mercadopago/preference", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(checkoutPayload(false)),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "No se pudo iniciar Mercado Pago");
+        return;
+      }
+      sessionStorage.setItem("mh_order", JSON.stringify(data.order));
+      window.location.href = data.initPoint;
+    } catch {
+      setError("Error de red al conectar con Mercado Pago.");
     } finally {
       setLoading(false);
     }
@@ -239,8 +280,20 @@ export default function CheckoutPage() {
 
           {error && <p className="text-sm text-berry">{error}</p>}
           <button type="submit" className="btn-primary" disabled={loading}>
-            {loading ? "Procesando…" : `Pagar ${formatPrice(total)}`}
+            {loading ? "Procesando…" : `Pagar con tarjeta ${formatPrice(total)}`}
           </button>
+          <button
+            type="button"
+            className="btn-ink w-full"
+            disabled={loading}
+            onClick={payWithMercadoPago}
+          >
+            {loading ? "Conectando…" : "Pagar con Mercado Pago"}
+          </button>
+          <p className="text-xs text-ink-muted">
+            Mercado Pago abre su checkout seguro (tarjetas, SPEI, saldo, etc.).
+            No necesitas llenar los datos de tarjeta de arriba.
+          </p>
         </div>
 
         <aside className="h-fit border border-ink/10 bg-white/60 p-6">

@@ -66,7 +66,7 @@ export const productSchema = z.object({
   active: z.boolean().optional(),
 });
 
-export const checkoutSchema = z.object({
+const checkoutBaseSchema = z.object({
   items: z
     .array(
       z.object({
@@ -84,6 +84,9 @@ export const checkoutSchema = z.object({
   shipReferences: z.string().optional(),
   billingName: z.string().min(2),
   billingEmail: z.string().email(),
+});
+
+export const checkoutSchema = checkoutBaseSchema.extend({
   cardNumber: z
     .string()
     .transform((v) => v.replace(/\s/g, ""))
@@ -91,3 +94,6 @@ export const checkoutSchema = z.object({
   cardExpiry: z.string().regex(/^(0[1-9]|1[0-2])\/\d{2}$/, "Formato MM/AA"),
   cardCvc: z.string().regex(/^\d{3,4}$/, "CVC inválido"),
 });
+
+/** Checkout sin tarjeta: el pago lo procesa Mercado Pago. */
+export const mercadoPagoCheckoutSchema = checkoutBaseSchema;

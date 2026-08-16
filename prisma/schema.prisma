@@ -58,28 +58,31 @@ model Address {
 }
 
 model Order {
-  id             String      @id @default(cuid())
-  userId         String?
-  user           User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
-  guestEmail     String?
-  status         String      @default("confirmed")
-  subtotal       Float
-  tax            Float
-  shippingCost   Float
-  total          Float
-  shippingMethod String
-  trackingNumber String
-  shipStreet     String
-  shipCity       String
-  shipState      String  @default("")
-  shipPostalCode String
-  shipCountry    String
-  shipReferences String?
-  billingName    String
-  billingEmail   String
-  cardLast4      String?
-  createdAt      DateTime    @default(now())
-  items          OrderItem[]
+  id              String      @id @default(cuid())
+  userId          String?
+  user            User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  guestEmail      String?
+  status          String      @default("confirmed")
+  subtotal        Float
+  tax             Float
+  shippingCost    Float
+  total           Float
+  shippingMethod  String
+  trackingNumber  String
+  shipStreet      String
+  shipCity        String
+  shipState       String      @default("")
+  shipPostalCode  String
+  shipCountry     String
+  shipReferences  String?
+  billingName     String
+  billingEmail    String
+  cardLast4       String?
+  paymentProvider String      @default("card")
+  mpPreferenceId  String?
+  mpPaymentId     String?
+  createdAt       DateTime    @default(now())
+  items           OrderItem[]
 }
 
 model OrderItem {
