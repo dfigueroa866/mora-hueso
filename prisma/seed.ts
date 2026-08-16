@@ -191,6 +191,8 @@ const products = [
 ];
 
 async function main() {
+  await prisma.reviewPhoto.deleteMany();
+  await prisma.review.deleteMany();
   await prisma.orderItem.deleteMany();
   await prisma.order.deleteMany();
   await prisma.address.deleteMany();
@@ -236,7 +238,7 @@ async function main() {
     },
   });
 
-  const sampleProducts = await prisma.product.findMany({ take: 2 });
+  const sampleProducts = await prisma.product.findMany({ take: 3 });
   if (sampleProducts.length >= 2) {
     const subtotal = sampleProducts[0].price * 2 + sampleProducts[1].price;
     const tax = Math.round(subtotal * 0.16 * 100) / 100;
@@ -278,6 +280,36 @@ async function main() {
             },
           ],
         },
+      },
+    });
+  }
+
+  if (sampleProducts.length >= 2) {
+    await prisma.review.create({
+      data: {
+        productId: sampleProducts[0].id,
+        userId: customer.id,
+        rating: 5,
+        title: "Se las acabó en un día",
+        comment:
+          "Pedí las Moritas para entrenamiento y mi perrita responde súper rápido. Llegaron bien empacadas y sin olores raros.",
+        photos: {
+          create: [
+            {
+              url: sampleProducts[0].image,
+            },
+          ],
+        },
+      },
+    });
+    await prisma.review.create({
+      data: {
+        productId: sampleProducts[1].id,
+        userId: customer.id,
+        rating: 4,
+        title: "Crujientes y sin grasa",
+        comment:
+          "Buenas galletas para premios cortos. Mi perro grande las disfruta; la próxima vez pediré el paquete más grande.",
       },
     });
   }

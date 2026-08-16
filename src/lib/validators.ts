@@ -66,6 +66,16 @@ export const productSchema = z.object({
   active: z.boolean().optional(),
 });
 
+export const reviewSchema = z.object({
+  productId: z.string().min(1, "Selecciona un producto"),
+  rating: z.coerce.number().int().min(1, "Mínimo 1 estrella").max(5, "Máximo 5 estrellas"),
+  title: z.string().max(80, "Título demasiado largo").optional().default(""),
+  comment: z
+    .string()
+    .min(10, "Cuéntanos un poco más (mínimo 10 caracteres)")
+    .max(1000, "Máximo 1000 caracteres"),
+});
+
 export const checkoutSchema = z.object({
   items: z
     .array(
