@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Camera, Star } from "lucide-react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
+import { Camera, ChevronLeft, ChevronRight, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+const PAGE_SIZE = 5;
 
 type ProductOption = {
   id: string;
@@ -77,6 +79,11 @@ export function ReviewsSection({ products }: { products: ProductOption[] }) {
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
   const [user, setUser] = useState<AuthUser>(null);
   const [loading, setLoading] = useState(true);
+  const [pageLoading, setPageLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [average, setAverage] = useState(0);
   const [productId, setProductId] = useState(products[0]?.id || "");
   const [rating, setRating] = useState(5);
   const [title, setTitle] = useState("");
@@ -89,16 +96,21 @@ export function ReviewsSection({ products }: { products: ProductOption[] }) {
 
   const isCustomer = user?.role === "customer";
 
-  const average = useMemo(() => {
-    if (!reviews.length) return 0;
-    return reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length;
-  }, [reviews]);
-
-  async function loadReviews() {
-    const res = await fetch("/api/reviews");
-    const data = await res.json();
-    if (res.ok) setReviews(data.reviews || []);
-  }
+  const loadReviews = useCallback(async (targetPage: number, opts?: { initial?: boolean }) => {
+    if (!opts?.initial) setPageLoading(true);
+    try {
+      const res = await fetch(`/api/reviews?page=${targetPage}`);
+      const data = await res.json();
+      if (!res.ok) return;
+      setReviews(data.reviews || []);
+      setPage(data.page || targetPage);
+      setTotal(data.total || 0);
+      setTotalPages(data.totalPages || 1);
+      setAverage(Number(data.average) || 0);
+    } finally {
+      if (!opts?.initial) setPageLoading(false);
+    }
+  }, []);
 
   async function loadUser() {
     try {
@@ -111,13 +123,15 @@ export function ReviewsSection({ products }: { products: ProductOption[] }) {
   }
 
   useEffect(() => {
-    Promise.all([loadReviews(), loadUser()]).finally(() => setLoading(false));
+    Promise.all([loadReviews(1, { initial: true }), loadUser()]).finally(() =>
+      setLoading(false)
+    );
     const onAuth = () => {
       void loadUser();
     };
     window.addEventListener("mh:auth", onAuth);
     return () => window.removeEventListener("mh:auth", onAuth);
-  }, []);
+  }, [loadReviews]);
 
   useEffect(() => {
     const urls = files.map((f) => URL.createObjectURL(f));
@@ -129,6 +143,11 @@ export function ReviewsSection({ products }: { products: ProductOption[] }) {
     if (!list) return;
     const next = Array.from(list).slice(0, 4);
     setFiles(next);
+  }
+
+  async function goToPage(nextPage: number) {
+    if (nextPage < 1 || nextPage > totalPages || nextPage === page) return;
+    await loadReviews(nextPage);
   }
 
   async function onSubmit(e: FormEvent) {
@@ -150,18 +169,21 @@ export function ReviewsSection({ products }: { products: ProductOption[] }) {
         setError(data.error || "No se pudo publicar la reseña");
         return;
       }
-      setReviews((prev) => [data.review, ...prev]);
       setTitle("");
       setComment("");
       setRating(5);
       setFiles([]);
       setSuccess("Gracias. Tu reseña ya es pública.");
+      await loadReviews(1);
     } catch {
       setError("Error de red");
     } finally {
       setSubmitting(false);
     }
   }
+
+  const from = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const to = Math.min(page * PAGE_SIZE, total);
 
   return (
     <section id="reseñas" className="border-t border-ink/10 bg-bone">
@@ -175,12 +197,11 @@ export function ReviewsSection({ products }: { products: ProductOption[] }) {
               Opiniones reales de clientes sobre los premios que recibieron.
             </p>
           </div>
-          {!loading && reviews.length > 0 && (
+          {!loading && total > 0 && (
             <div className="flex items-center gap-3 text-sm text-ink-muted">
               <Stars value={Math.round(average)} />
               <span>
-                {average.toFixed(1)} · {reviews.length} reseña
-                {reviews.length === 1 ? "" : "s"}
+                {average.toFixed(1)} · {total} reseña{total === 1 ? "" : "s"}
               </span>
             </div>
           )}
@@ -196,51 +217,86 @@ export function ReviewsSection({ products }: { products: ProductOption[] }) {
                 Aún no hay reseñas. Sé el primero en compartir tu experiencia.
               </p>
             )}
-            {reviews.map((review) => (
-              <article
-                key={review.id}
-                className="border-b border-ink/10 pb-6 last:border-b-0"
-              >
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <Stars value={review.rating} />
-                  <p className="font-display text-lg font-semibold text-ink">
-                    {review.title || review.product.name}
-                  </p>
-                </div>
-                <p className="mt-1 text-xs uppercase tracking-[0.14em] text-ink-muted">
-                  {review.user.name} · {formatReviewDate(review.createdAt)} ·{" "}
-                  <Link
-                    href={`/productos/${review.product.id}`}
-                    className="text-berry hover:underline"
-                  >
-                    {review.product.name}
-                  </Link>
-                </p>
-                <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink/85">
-                  {review.comment}
-                </p>
-                {review.photos.length > 0 && (
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {review.photos.map((photo) => (
-                      <a
-                        key={photo.id}
-                        href={photo.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="block overflow-hidden"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={photo.url}
-                          alt={`Foto de ${review.product.name}`}
-                          className="h-24 w-24 object-cover"
-                        />
-                      </a>
-                    ))}
+            <div className={cn("space-y-6", pageLoading && "opacity-60")}>
+              {reviews.map((review) => (
+                <article
+                  key={review.id}
+                  className="border-b border-ink/10 pb-6 last:border-b-0"
+                >
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <Stars value={review.rating} />
+                    <p className="font-display text-lg font-semibold text-ink">
+                      {review.title || review.product.name}
+                    </p>
                   </div>
-                )}
-              </article>
-            ))}
+                  <p className="mt-1 text-xs uppercase tracking-[0.14em] text-ink-muted">
+                    {review.user.name} · {formatReviewDate(review.createdAt)} ·{" "}
+                    <Link
+                      href={`/productos/${review.product.id}`}
+                      className="text-berry hover:underline"
+                    >
+                      {review.product.name}
+                    </Link>
+                  </p>
+                  <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink/85">
+                    {review.comment}
+                  </p>
+                  {review.photos.length > 0 && (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {review.photos.map((photo) => (
+                        <a
+                          key={photo.id}
+                          href={photo.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block overflow-hidden"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={photo.url}
+                            alt={`Foto de ${review.product.name}`}
+                            className="h-24 w-24 object-cover"
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </article>
+              ))}
+            </div>
+
+            {!loading && totalPages > 1 && (
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                <p className="text-xs uppercase tracking-[0.14em] text-ink-muted">
+                  {from}–{to} de {total}
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="btn-ghost px-3 py-2"
+                    disabled={page <= 1 || pageLoading}
+                    onClick={() => void goToPage(page - 1)}
+                    aria-label="Página anterior"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Anterior
+                  </button>
+                  <span className="min-w-[5.5rem] text-center text-sm text-ink-muted">
+                    {page} / {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn-ghost px-3 py-2"
+                    disabled={page >= totalPages || pageLoading}
+                    onClick={() => void goToPage(page + 1)}
+                    aria-label="Página siguiente"
+                  >
+                    Siguiente
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="lg:pl-4">

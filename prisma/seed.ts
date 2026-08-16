@@ -285,33 +285,75 @@ async function main() {
   }
 
   if (sampleProducts.length >= 2) {
-    await prisma.review.create({
-      data: {
+    const demoReviews = [
+      {
         productId: sampleProducts[0].id,
-        userId: customer.id,
         rating: 5,
         title: "Se las acabó en un día",
         comment:
           "Pedí las Moritas para entrenamiento y mi perrita responde súper rápido. Llegaron bien empacadas y sin olores raros.",
-        photos: {
-          create: [
-            {
-              url: sampleProducts[0].image,
-            },
-          ],
-        },
+        withPhoto: true,
       },
-    });
-    await prisma.review.create({
-      data: {
+      {
         productId: sampleProducts[1].id,
-        userId: customer.id,
         rating: 4,
         title: "Crujientes y sin grasa",
         comment:
           "Buenas galletas para premios cortos. Mi perro grande las disfruta; la próxima vez pediré el paquete más grande.",
       },
-    });
+      {
+        productId: sampleProducts[0].id,
+        rating: 5,
+        title: "Ideal para paseos",
+        comment:
+          "Las llevo en la bolsa del parque. No manchan y mi perro las reconoce al instante.",
+      },
+      {
+        productId: sampleProducts[1].id,
+        rating: 3,
+        title: "Buen sabor, paquete chico",
+        comment:
+          "Le gustaron mucho, pero se terminan rápido si tienes más de un perro en casa.",
+      },
+      {
+        productId: sampleProducts[2]?.id || sampleProducts[0].id,
+        rating: 5,
+        title: "Masticación larga",
+        comment:
+          "Nos duró casi una hora. Perfecto para días lluviosos cuando necesita entretenimiento.",
+      },
+      {
+        productId: sampleProducts[0].id,
+        rating: 4,
+        title: "Buen olor natural",
+        comment:
+          "Se nota que es res real. No tiene ese olor artificial de otros premios del súper.",
+      },
+      {
+        productId: sampleProducts[1].id,
+        rating: 5,
+        title: "Repetiré la compra",
+        comment:
+          "Llegó rapidísimo y en buen estado. Mi perrita ya las espera cuando abro la cocina.",
+      },
+    ];
+
+    for (const item of demoReviews) {
+      const product = sampleProducts.find((p) => p.id === item.productId) || sampleProducts[0];
+      await prisma.review.create({
+        data: {
+          productId: item.productId,
+          userId: customer.id,
+          rating: item.rating,
+          title: item.title,
+          comment: item.comment,
+          photos:
+            "withPhoto" in item && item.withPhoto
+              ? { create: [{ url: product.image }] }
+              : undefined,
+        },
+      });
+    }
   }
 
   console.log("Seed OK — productos:", products.length, "| admin:", admin.email, "| cliente:", customer.email);

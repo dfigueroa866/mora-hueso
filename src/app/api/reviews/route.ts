@@ -22,12 +22,46 @@ function reviewInclude() {
   } as const;
 }
 
-export async function GET() {
-  const reviews = await prisma.review.findMany({
-    orderBy: { createdAt: "desc" },
-    include: reviewInclude(),
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const pageSize = 5;
+  const rawPage = Number(searchParams.get("page") || "1");
+  const page = Number.isFinite(rawPage) && rawPage > 0 ? Math.floor(rawPage) : 1;
+  const skip = (page - 1) * pageSize;
+
+  const [total, aggregate, reviews] = await Promise.all([
+    prisma.review.count(),
+    prisma.review.aggregate({ _avg: { rating: true } }),
+    prisma.review.findMany({
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: pageSize,
+      include: reviewInclude(),
+    }),
+  ]);
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, totalPages);
+
+  // If the requested page is past the end, refetch the last page.
+  const pageReviews =
+    page > totalPages && total > 0
+      ? await prisma.review.findMany({
+          orderBy: { createdAt: "desc" },
+          skip: (totalPages - 1) * pageSize,
+          take: pageSize,
+          include: reviewInclude(),
+        })
+      : reviews;
+
+  return NextResponse.json({
+    reviews: pageReviews,
+    page: safePage,
+    pageSize,
+    total,
+    totalPages,
+    average: aggregate._avg.rating ?? 0,
   });
-  return NextResponse.json({ reviews });
 }
 
 export async function POST(req: NextRequest) {
