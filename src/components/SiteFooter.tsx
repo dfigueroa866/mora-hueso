@@ -1,4 +1,11 @@
 import Link from "next/link";
+import { Facebook, Instagram } from "lucide-react";
+import { SOCIAL_LINKS } from "@/lib/constants";
+
+const SOCIAL_ICONS = {
+  Facebook,
+  Instagram,
+} as const;
 
 export function SiteFooter() {
   return (
@@ -10,6 +17,23 @@ export function SiteFooter() {
             Premios limpios para perros curiosos. Ingredientes simples, stock
             real y envíos a toda la República.
           </p>
+          <div className="mt-5 flex items-center gap-3">
+            {SOCIAL_LINKS.map((social) => {
+              const Icon = SOCIAL_ICONS[social.name];
+              return (
+                <a
+                  key={social.name}
+                  href={social.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={social.name}
+                  className="flex h-10 w-10 items-center justify-center border border-bone/20 text-bone/80 transition hover:border-bone/50 hover:text-bone"
+                >
+                  <Icon className="h-4 w-4" strokeWidth={1.6} />
+                </a>
+              );
+            })}
+          </div>
         </div>
         <div>
           <p className="text-xs uppercase tracking-[0.16em] text-bone/50">

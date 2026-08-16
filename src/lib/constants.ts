@@ -29,6 +29,17 @@ export const SHIPPING_METHODS = [
 
 export const TAX_RATE = Number(process.env.NEXT_PUBLIC_TAX_RATE || "0.16");
 
+export const SOCIAL_LINKS = [
+  {
+    name: "Facebook",
+    href: "https://www.facebook.com/people/Mora-Hueso/61560327404163/",
+  },
+  {
+    name: "Instagram",
+    href: "https://www.instagram.com/morayhueso/",
+  },
+] as const;
+
 export function categoryLabel(value: string) {
   return CATEGORIES.find((c) => c.value === value)?.label ?? value;
 }
