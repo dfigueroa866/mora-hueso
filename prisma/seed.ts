@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { LEGAL_DEFAULTS, LEGAL_META, LEGAL_SLUGS } from "../src/lib/legal";
 
 const prisma = new PrismaClient();
 
@@ -198,6 +199,7 @@ async function main() {
   await prisma.address.deleteMany();
   await prisma.product.deleteMany();
   await prisma.user.deleteMany();
+  await prisma.legalDocument.deleteMany();
 
   for (const product of products) {
     await prisma.product.create({ data: product });
@@ -356,7 +358,26 @@ async function main() {
     }
   }
 
-  console.log("Seed OK — productos:", products.length, "| admin:", admin.email, "| cliente:", customer.email);
+  for (const slug of LEGAL_SLUGS) {
+    await prisma.legalDocument.create({
+      data: {
+        slug,
+        title: LEGAL_META[slug].title,
+        content: LEGAL_DEFAULTS[slug],
+      },
+    });
+  }
+
+  console.log(
+    "Seed OK — productos:",
+    products.length,
+    "| políticas:",
+    LEGAL_SLUGS.length,
+    "| admin:",
+    admin.email,
+    "| cliente:",
+    customer.email
+  );
 }
 
 main()

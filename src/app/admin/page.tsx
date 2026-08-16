@@ -11,6 +11,7 @@ import {
   formatPrice,
   categoryLabel,
 } from "@/lib/constants";
+import { AdminPolicies } from "@/components/AdminPolicies";
 
 type Product = {
   id: string;
@@ -76,7 +77,9 @@ const emptyForm = {
 export default function AdminPage() {
   const router = useRouter();
   const [data, setData] = useState<Dashboard | null>(null);
-  const [tab, setTab] = useState<"inventory" | "sales" | "form">("inventory");
+  const [tab, setTab] = useState<"inventory" | "sales" | "form" | "policies">(
+    "inventory"
+  );
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState("");
@@ -384,6 +387,7 @@ export default function AdminPage() {
           [
             ["inventory", "Inventario"],
             ["sales", "Ventas"],
+            ["policies", "Políticas"],
             ["form", editingId ? "Editar" : "Formulario"],
           ] as const
         ).map(([key, label]) => (
@@ -635,6 +639,8 @@ export default function AdminPage() {
           ))}
         </ul>
       )}
+
+      {tab === "policies" && <AdminPolicies />}
 
       {tab === "form" && (
         <form

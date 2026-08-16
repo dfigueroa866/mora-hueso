@@ -1,12 +1,11 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { LEGAL_META, LEGAL_SLUGS } from "@/lib/legal";
 
-const LEGAL_LINKS = [
-  { href: "/legal/privacidad", label: "Política de privacidad" },
-  { href: "/legal/terminos", label: "Términos y condiciones" },
-  { href: "/legal/envios", label: "Política de envíos" },
-  { href: "/legal/devoluciones", label: "Cambios y devoluciones" },
-] as const;
+const LEGAL_LINKS = LEGAL_SLUGS.map((slug) => ({
+  href: LEGAL_META[slug].href,
+  label: LEGAL_META[slug].navLabel,
+}));
 
 export function LegalPage({
   title,
@@ -53,20 +52,5 @@ export function LegalPage({
         </article>
       </div>
     </div>
-  );
-}
-
-export function LegalSection({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <section>
-      <h2 className="font-display text-2xl font-semibold text-ink">{title}</h2>
-      <div className="mt-3 space-y-3">{children}</div>
-    </section>
   );
 }
