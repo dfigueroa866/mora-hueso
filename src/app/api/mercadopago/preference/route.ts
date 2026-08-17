@@ -6,12 +6,14 @@ import {
   TAX_RATE,
   generateTrackingNumber,
   roundMoney,
+  getPendingPaymentTtlMinutes,
 } from "@/lib/constants";
 import { mercadoPagoCheckoutSchema } from "@/lib/validators";
 import {
   createMercadoPagoPreference,
   getAppUrl,
 } from "@/lib/mercadopago";
+import { restoreStockAndCancel } from "@/lib/orders";
 
 /**
  * POST /api/mercadopago/preference
@@ -171,9 +173,10 @@ export async function POST(req: NextRequest) {
         payerName: data.billingName,
         externalReference: order.id,
         notificationUrl: `${appUrl}/api/mercadopago/webhook`,
+        expiresInMinutes: getPendingPaymentTtlMinutes(),
         backUrls: {
-          success: `${appUrl}/confirmacion?t=${trackingNumber}&status=approved`,
-          pending: `${appUrl}/confirmacion?t=${trackingNumber}&status=pending`,
+          success: `${appUrl}/confirmacion?t=${trackingNumber}`,
+          pending: `${appUrl}/confirmacion?t=${trackingNumber}`,
           failure: `${appUrl}/checkout?status=failure&t=${trackingNumber}`,
         },
       });
@@ -231,26 +234,3 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function restoreStockAndCancel(orderId: string) {
-  await prisma.$transaction(async (tx) => {
-    const order = await tx.order.findUnique({
-      where: { id: orderId },
-      include: { items: true },
-    });
-    if (!order) return;
-
-    for (const item of order.items) {
-      if (item.productId) {
-        await tx.product.update({
-          where: { id: item.productId },
-          data: { stock: { increment: item.quantity } },
-        });
-      }
-    }
-
-    await tx.order.update({
-      where: { id: orderId },
-      data: { status: "cancelled" },
-    });
-  });
-}

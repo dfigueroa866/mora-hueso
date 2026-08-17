@@ -64,11 +64,18 @@ export async function POST(req: NextRequest) {
     data: { resetToken, resetExpires },
   });
 
-  return NextResponse.json({
+  const payload: Record<string, unknown> = {
     ok: true,
-    message:
-      "Si el correo existe, enviamos instrucciones. (Demo: usa el token abajo)",
-    demoToken: resetToken,
-    demoResetUrl: `/recuperar?token=${resetToken}`,
-  });
+    message: "Si el correo existe, enviamos instrucciones.",
+  };
+
+  if (process.env.NODE_ENV === "development") {
+    payload.message =
+      "Si el correo existe, enviamos instrucciones. (Demo: usa el token abajo)";
+    payload.demoToken = resetToken;
+    payload.demoResetUrl = `/recuperar?token=${resetToken}`;
+    console.log(`[auth/recover] reset token for ${user.email}: ${resetToken}`);
+  }
+
+  return NextResponse.json(payload);
 }

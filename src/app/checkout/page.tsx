@@ -1,7 +1,6 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useCart } from "@/lib/cart-store";
 import {
@@ -22,8 +21,7 @@ type ShippingData = {
 };
 
 export default function CheckoutPage() {
-  const router = useRouter();
-  const { items, clear, subtotal } = useCart();
+  const { items, subtotal } = useCart();
   const [mounted, setMounted] = useState(false);
   const [shipping, setShipping] = useState<ShippingData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -31,9 +29,6 @@ export default function CheckoutPage() {
   const [form, setForm] = useState({
     billingName: "",
     billingEmail: "",
-    cardNumber: "",
-    cardExpiry: "",
-    cardCvc: "",
   });
 
   useEffect(() => {
@@ -97,8 +92,8 @@ export default function CheckoutPage() {
   const tax = roundMoney(sub * TAX_RATE);
   const total = roundMoney(sub + tax + method.cost);
 
-  function checkoutPayload(includeCard: boolean) {
-    const base = {
+  function checkoutPayload() {
+    return {
       items: items.map((i) => ({
         productId: i.productId,
         quantity: i.quantity,
@@ -113,45 +108,13 @@ export default function CheckoutPage() {
       billingName: form.billingName,
       billingEmail: form.billingEmail,
     };
-    if (!includeCard) return base;
-    return {
-      ...base,
-      cardNumber: form.cardNumber,
-      cardExpiry: form.cardExpiry,
-      cardCvc: form.cardCvc,
-    };
   }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
-    setLoading(true);
-    try {
-      const res = await fetch("/api/orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(checkoutPayload(true)),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "No se pudo completar el pago");
-        return;
-      }
-      clear();
-      sessionStorage.removeItem("mh_shipping");
-      sessionStorage.setItem("mh_order", JSON.stringify(data.order));
-      router.push(`/confirmacion?t=${data.order.trackingNumber}`);
-    } catch {
-      setError("Error de red. Intenta de nuevo.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function payWithMercadoPago() {
-    setError("");
     if (!form.billingName.trim() || !form.billingEmail.trim()) {
-      setError("Completa nombre y correo antes de pagar con Mercado Pago.");
+      setError("Completa nombre y correo para continuar.");
       return;
     }
     setLoading(true);
@@ -159,7 +122,7 @@ export default function CheckoutPage() {
       const res = await fetch("/api/mercadopago/preference", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(checkoutPayload(false)),
+        body: JSON.stringify(checkoutPayload()),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -179,7 +142,7 @@ export default function CheckoutPage() {
     <div className="section-pad">
       <h1 className="font-display text-4xl font-semibold">Pago</h1>
       <p className="mt-2 text-ink-muted">
-        Datos de facturación y tarjeta (simulación segura local).
+        Confirma tus datos y paga de forma segura con Mercado Pago.
       </p>
 
       <form
@@ -189,7 +152,7 @@ export default function CheckoutPage() {
         <div className="space-y-5">
           <div>
             <label className="label" htmlFor="billingName">
-              Nombre en la tarjeta
+              Nombre completo
             </label>
             <input
               id="billingName"
@@ -216,56 +179,6 @@ export default function CheckoutPage() {
               }
             />
           </div>
-          <div>
-            <label className="label" htmlFor="cardNumber">
-              Número de tarjeta
-            </label>
-            <input
-              id="cardNumber"
-              className="field"
-              placeholder="4242 4242 4242 4242"
-              inputMode="numeric"
-              autoComplete="cc-number"
-              maxLength={19}
-              required
-              value={form.cardNumber}
-              onChange={(e) => {
-                const digits = e.target.value.replace(/\D/g, "").slice(0, 16);
-                const formatted = digits.replace(/(\d{4})(?=\d)/g, "$1 ");
-                setForm({ ...form, cardNumber: formatted });
-              }}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="label" htmlFor="cardExpiry">
-                Vencimiento (MM/AA)
-              </label>
-              <input
-                id="cardExpiry"
-                className="field"
-                placeholder="12/28"
-                required
-                value={form.cardExpiry}
-                onChange={(e) =>
-                  setForm({ ...form, cardExpiry: e.target.value })
-                }
-              />
-            </div>
-            <div>
-              <label className="label" htmlFor="cardCvc">
-                CVC
-              </label>
-              <input
-                id="cardCvc"
-                className="field"
-                placeholder="123"
-                required
-                value={form.cardCvc}
-                onChange={(e) => setForm({ ...form, cardCvc: e.target.value })}
-              />
-            </div>
-          </div>
 
           <div className="border border-ink/10 bg-white/50 p-4 text-sm text-ink-muted">
             <p className="font-medium text-ink">Envío a</p>
@@ -280,19 +193,13 @@ export default function CheckoutPage() {
 
           {error && <p className="text-sm text-berry">{error}</p>}
           <button type="submit" className="btn-primary" disabled={loading}>
-            {loading ? "Procesando…" : `Pagar con tarjeta ${formatPrice(total)}`}
-          </button>
-          <button
-            type="button"
-            className="btn-ink w-full"
-            disabled={loading}
-            onClick={payWithMercadoPago}
-          >
-            {loading ? "Conectando…" : "Pagar con Mercado Pago"}
+            {loading
+              ? "Conectando…"
+              : `Pagar con Mercado Pago ${formatPrice(total)}`}
           </button>
           <p className="text-xs text-ink-muted">
-            Mercado Pago abre su checkout seguro (tarjetas, SPEI, saldo, etc.).
-            No necesitas llenar los datos de tarjeta de arriba.
+            Serás redirigido al checkout de Mercado Pago (tarjetas, SPEI, saldo,
+            etc.).
           </p>
         </div>
 

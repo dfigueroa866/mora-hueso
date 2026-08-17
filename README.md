@@ -35,7 +35,11 @@ Abre [http://localhost:3000](http://localhost:3000)
 
 1. Crea una aplicación en [Mercado Pago Developers](https://www.mercadopago.com.mx/developers).
 2. Copia el **Access Token** de prueba a `MERCADOPAGO_ACCESS_TOKEN`.
-3. Define `NEXT_PUBLIC_APP_URL` con la URL pública (en local, usa un túnel si quieres probar el webhook).
-4. Endpoints:
+3. Configura el webhook y copia el secret a `MERCADOPAGO_WEBHOOK_SECRET`.
+4. Define `NEXT_PUBLIC_APP_URL` con la URL pública (en local, usa un túnel para el webhook).
+5. Endpoints:
    - `POST /api/mercadopago/preference` — crea pedido pendiente + preferencia y devuelve `initPoint`
-   - `POST /api/mercadopago/webhook` — recibe notificaciones y actualiza el estado del pedido
+   - `POST /api/mercadopago/webhook` — notificaciones firmadas; actualiza el pedido
+   - `POST /api/mercadopago/expire-pending` — cancela pendientes viejos (header `Authorization: Bearer $CRON_SECRET`)
+
+El checkout de la tienda usa solo Mercado Pago. `/api/orders` (tarjeta demo) queda deshabilitado en producción salvo `ALLOW_DEMO_CARD_CHECKOUT=true`.

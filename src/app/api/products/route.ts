@@ -11,6 +11,14 @@ export async function GET(req: NextRequest) {
   const q = searchParams.get("q");
   const admin = searchParams.get("admin") === "1";
 
+  if (admin) {
+    const { requireAdmin } = await import("@/lib/auth");
+    const user = await requireAdmin();
+    if (!user) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    }
+  }
+
   const where: Record<string, unknown> = {};
   if (!admin) where.active = true;
   if (category) where.category = category;

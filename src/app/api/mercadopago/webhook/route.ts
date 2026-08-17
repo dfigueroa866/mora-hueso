@@ -2,15 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import {
   getMercadoPagoPayment,
+  getMercadoPagoWebhookSecret,
   mapPaymentStatusToOrderStatus,
+  paymentAmountMatchesOrder,
+  verifyMercadoPagoSignature,
 } from "@/lib/mercadopago";
+import {
+  restoreStockAndCancel,
+  shouldRestoreStockOnStatusChange,
+} from "@/lib/orders";
+import { isFinalOrderStatus } from "@/lib/constants";
 
 /**
  * POST /api/mercadopago/webhook
- * Recibe notificaciones de Mercado Pago (topic payment / merchant_order)
- * y actualiza el estado del pedido.
- *
- * Mercado Pago puede enviar el id por query (?id=&topic=) o en el body JSON.
+ * Recibe notificaciones de Mercado Pago y actualiza el estado del pedido.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -22,20 +27,23 @@ export async function POST(req: NextRequest) {
     }
 
     const url = new URL(req.url);
+    const xSignature = req.headers.get("x-signature");
+    const xRequestId = req.headers.get("x-request-id");
+    const dataIdFromQuery =
+      url.searchParams.get("data.id") || url.searchParams.get("id");
+
     let topic =
-      url.searchParams.get("topic") ||
-      url.searchParams.get("type") ||
-      "";
-    let resourceId =
-      url.searchParams.get("id") ||
-      url.searchParams.get("data.id") ||
-      "";
+      url.searchParams.get("topic") || url.searchParams.get("type") || "";
+    let resourceId = dataIdFromQuery || "";
+    let rawBody: unknown = null;
 
     try {
-      const body = await req.json();
+      rawBody = await req.json();
+      const body = rawBody as Record<string, unknown>;
       if (body?.type) topic = String(body.type);
       if (body?.topic) topic = String(body.topic);
-      if (body?.data?.id) resourceId = String(body.data.id);
+      const data = body?.data as { id?: string } | undefined;
+      if (data?.id) resourceId = String(data.id);
       if (body?.id && !resourceId) resourceId = String(body.id);
       if (body?.resource && !resourceId) {
         const parts = String(body.resource).split("/");
@@ -43,6 +51,28 @@ export async function POST(req: NextRequest) {
       }
     } catch {
       // Algunos webhooks solo traen query params
+    }
+
+    const secret = getMercadoPagoWebhookSecret();
+    if (secret) {
+      const valid = verifyMercadoPagoSignature({
+        xSignature,
+        xRequestId,
+        dataId: resourceId || dataIdFromQuery,
+        secret,
+      });
+      if (!valid) {
+        console.warn("[Mercado Pago] firma de webhook inválida");
+        return NextResponse.json({ error: "Firma inválida" }, { status: 401 });
+      }
+    } else if (process.env.NODE_ENV === "production") {
+      console.error(
+        "[Mercado Pago] Falta MERCADOPAGO_WEBHOOK_SECRET en producción"
+      );
+      return NextResponse.json(
+        { error: "Webhook no configurado" },
+        { status: 503 }
+      );
     }
 
     if (!resourceId) {
@@ -59,7 +89,6 @@ export async function POST(req: NextRequest) {
       await handlePaymentNotification(resourceId);
     }
 
-    // Siempre 200 para que MP no reintente en bucle por errores de negocio
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("[Mercado Pago] webhook error:", e);
@@ -67,7 +96,6 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/** Mercado Pago también hace GET de verificación en algunos entornos. */
 export async function GET(req: NextRequest) {
   return POST(req);
 }
@@ -90,14 +118,27 @@ async function handlePaymentNotification(paymentId: string) {
     return;
   }
 
-  const nextStatus = mapPaymentStatusToOrderStatus(payment.status);
-  const alreadyFinal =
-    order.status === "confirmed" ||
-    order.status === "cancelled" ||
-    order.status === "refunded";
+  // Idempotencia: mismo pago ya aplicado
+  if (order.mpPaymentId && order.mpPaymentId === String(payment.id)) {
+    if (isFinalOrderStatus(order.status) && order.status !== "pending_payment") {
+      return;
+    }
+  }
 
-  // Evitar doble restauración de stock si ya se canceló
-  if (alreadyFinal && order.status === nextStatus) {
+  if (!paymentAmountMatchesOrder(order.total, payment.transaction_amount)) {
+    console.warn(
+      `[Mercado Pago] monto no coincide: order=${order.total} payment=${payment.transaction_amount}`
+    );
+    return;
+  }
+
+  const nextStatus = mapPaymentStatusToOrderStatus(payment.status);
+
+  if (
+    isFinalOrderStatus(order.status) &&
+    order.status !== "pending_payment" &&
+    order.status === nextStatus
+  ) {
     await prisma.order.update({
       where: { id: order.id },
       data: { mpPaymentId: String(payment.id) },
@@ -105,29 +146,29 @@ async function handlePaymentNotification(paymentId: string) {
     return;
   }
 
+  // No degradar un pedido ya confirmado/enviado con notificaciones tardías
   if (
-    order.status === "pending_payment" &&
-    (nextStatus === "cancelled" || nextStatus === "refunded")
+    (order.status === "confirmed" || order.status === "shipped") &&
+    nextStatus !== order.status &&
+    nextStatus !== "refunded"
   ) {
-    await prisma.$transaction(async (tx) => {
-      for (const item of order.items) {
-        if (item.productId) {
-          await tx.product.update({
-            where: { id: item.productId },
-            data: { stock: { increment: item.quantity } },
-          });
-        }
-      }
-      await tx.order.update({
-        where: { id: order.id },
-        data: {
-          status: nextStatus,
-          mpPaymentId: String(payment.id),
-        },
-      });
+    await prisma.order.update({
+      where: { id: order.id },
+      data: { mpPaymentId: String(payment.id) },
+    });
+    return;
+  }
+
+  if (shouldRestoreStockOnStatusChange(order.status, nextStatus)) {
+    const finalStatus =
+      nextStatus === "refunded" ? "refunded" : "cancelled";
+    await restoreStockAndCancel(order.id, finalStatus);
+    await prisma.order.update({
+      where: { id: order.id },
+      data: { mpPaymentId: String(payment.id) },
     });
     console.log(
-      `[Mercado Pago] Pedido ${order.trackingNumber} → ${nextStatus} (pago ${payment.id})`
+      `[Mercado Pago] Pedido ${order.trackingNumber} → ${finalStatus} (pago ${payment.id})`
     );
     return;
   }

@@ -7,6 +7,7 @@
     "build": "node ./node_modules/prisma/build/index.js generate && node ./node_modules/next/dist/bin/next build",
     "start": "node ./node_modules/next/dist/bin/next start",
     "lint": "node ./node_modules/next/dist/bin/next lint",
+    "test": "node --import tsx --test src/lib/**/*.test.ts",
     "db:push": "node ./node_modules/prisma/build/index.js db push",
     "db:seed": "node ./node_modules/tsx/dist/cli.mjs prisma/seed.ts",
     "db:setup": "node ./node_modules/prisma/build/index.js db push && node ./node_modules/tsx/dist/cli.mjs prisma/seed.ts",

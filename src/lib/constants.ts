@@ -29,6 +29,40 @@ export const SHIPPING_METHODS = [
 
 export const TAX_RATE = Number(process.env.NEXT_PUBLIC_TAX_RATE || "0.16");
 
+/** Estados de pedido usados en la app. */
+export const ORDER_STATUSES = [
+  "pending_payment",
+  "confirmed",
+  "shipped",
+  "cancelled",
+  "refunded",
+] as const;
+
+export type OrderStatus = (typeof ORDER_STATUSES)[number];
+
+/** Pedidos que cuentan como ingreso. */
+export const REVENUE_ORDER_STATUSES: OrderStatus[] = ["confirmed", "shipped"];
+
+export const FINAL_ORDER_STATUSES: OrderStatus[] = [
+  "confirmed",
+  "shipped",
+  "cancelled",
+  "refunded",
+];
+
+export function isOrderStatus(value: string): value is OrderStatus {
+  return (ORDER_STATUSES as readonly string[]).includes(value);
+}
+
+export function isFinalOrderStatus(status: string) {
+  return (FINAL_ORDER_STATUSES as readonly string[]).includes(status);
+}
+
+export function getPendingPaymentTtlMinutes() {
+  const n = Number(process.env.MERCADOPAGO_PENDING_TTL_MINUTES || "30");
+  return Number.isFinite(n) && n > 0 ? n : 30;
+}
+
 export function categoryLabel(value: string) {
   return CATEGORIES.find((c) => c.value === value)?.label ?? value;
 }

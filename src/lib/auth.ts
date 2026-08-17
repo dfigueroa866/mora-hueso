@@ -4,10 +4,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "./db";
 
 const COOKIE = "mh_session";
-const secret = () =>
-  new TextEncoder().encode(
-    process.env.JWT_SECRET || "mora-hueso-dev-secret-change-in-production"
-  );
+
+function resolveJwtSecret() {
+  const fromEnv = process.env.JWT_SECRET;
+  if (fromEnv) return fromEnv;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("JWT_SECRET es obligatorio en producción");
+  }
+  return "mora-hueso-dev-secret-change-in-production";
+}
+
+const secret = () => new TextEncoder().encode(resolveJwtSecret());
 
 export type SessionUser = {
   id: string;

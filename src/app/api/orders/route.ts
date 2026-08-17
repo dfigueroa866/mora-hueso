@@ -10,6 +10,21 @@ import {
 import { checkoutSchema } from "@/lib/validators";
 
 export async function POST(req: NextRequest) {
+  const demoAllowed =
+    process.env.ALLOW_DEMO_CARD_CHECKOUT === "true" ||
+    (process.env.NODE_ENV !== "production" &&
+      process.env.ALLOW_DEMO_CARD_CHECKOUT !== "false");
+
+  if (!demoAllowed) {
+    return NextResponse.json(
+      {
+        error:
+          "El checkout con tarjeta simulada está deshabilitado. Usa Mercado Pago.",
+      },
+      { status: 403 }
+    );
+  }
+
   const body = await req.json();
   const parsed = checkoutSchema.safeParse(body);
   if (!parsed.success) {

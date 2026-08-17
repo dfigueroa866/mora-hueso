@@ -1,3 +1,6 @@
+import { createHmac, timingSafeEqual } from "crypto";
+import { roundMoney } from "@/lib/constants";
+
 const MP_API = "https://api.mercadopago.com";
 
 export function getMercadoPagoAccessToken() {
@@ -6,6 +9,10 @@ export function getMercadoPagoAccessToken() {
     throw new Error("Falta MERCADOPAGO_ACCESS_TOKEN en el entorno");
   }
   return token;
+}
+
+export function getMercadoPagoWebhookSecret() {
+  return process.env.MERCADOPAGO_WEBHOOK_SECRET || "";
 }
 
 export function getAppUrl() {
@@ -36,6 +43,8 @@ export type CreatePreferenceInput = {
     pending: string;
     failure: string;
   };
+  /** Minutos hasta que expire la preferencia. */
+  expiresInMinutes?: number;
 };
 
 export type MercadoPagoPreference = {
@@ -48,6 +57,9 @@ export async function createMercadoPagoPreference(
   input: CreatePreferenceInput
 ): Promise<MercadoPagoPreference> {
   const token = getMercadoPagoAccessToken();
+  const expiresInMinutes = input.expiresInMinutes ?? 30;
+  const now = new Date();
+  const expirationTo = new Date(now.getTime() + expiresInMinutes * 60 * 1000);
 
   const body = {
     items: input.items.map((item) => ({
@@ -67,6 +79,9 @@ export async function createMercadoPagoPreference(
     external_reference: input.externalReference,
     notification_url: input.notificationUrl,
     statement_descriptor: "MORA Y HUESO",
+    expires: true,
+    expiration_date_from: now.toISOString(),
+    expiration_date_to: expirationTo.toISOString(),
     metadata: {
       store: "mora-hueso",
       order_id: input.externalReference,
@@ -88,7 +103,9 @@ export async function createMercadoPagoPreference(
       data?.message ||
       data?.error ||
       "No se pudo crear la preferencia de Mercado Pago";
-    throw new Error(typeof message === "string" ? message : JSON.stringify(message));
+    throw new Error(
+      typeof message === "string" ? message : JSON.stringify(message)
+    );
   }
 
   if (!data?.id || !data?.init_point) {
@@ -148,4 +165,67 @@ export function mapPaymentStatusToOrderStatus(status: string) {
     default:
       return "pending_payment";
   }
+}
+
+/**
+ * Valida la firma x-signature de webhooks de Mercado Pago.
+ * Manifest: id:{data.id};request-id:{x-request-id};ts:{ts};
+ */
+export function verifyMercadoPagoSignature(params: {
+  xSignature: string | null;
+  xRequestId: string | null;
+  dataId: string | null;
+  secret: string;
+}): boolean {
+  const { xSignature, xRequestId, dataId, secret } = params;
+  if (!secret || !xSignature) return false;
+
+  const parts = Object.fromEntries(
+    xSignature.split(",").map((pair) => {
+      const [k, ...rest] = pair.trim().split("=");
+      return [k, rest.join("=")];
+    })
+  ) as Record<string, string>;
+
+  const ts = parts.ts;
+  const v1 = parts.v1;
+  if (!ts || !v1) return false;
+
+  const manifestParts: string[] = [];
+  if (dataId) {
+    manifestParts.push(`id:${dataId.toLowerCase()}`);
+  }
+  if (xRequestId) {
+    manifestParts.push(`request-id:${xRequestId}`);
+  }
+  manifestParts.push(`ts:${ts}`);
+  const manifest = `${manifestParts.join(";")};`;
+
+  const expected = createHmac("sha256", secret)
+    .update(manifest)
+    .digest("hex");
+
+  try {
+    const a = Buffer.from(expected, "utf8");
+    const b = Buffer.from(v1, "utf8");
+    if (a.length !== b.length) return false;
+    return timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
+/** Compara montos con tolerancia de 0.01 (redondeo). */
+export function paymentAmountMatchesOrder(
+  orderTotal: number,
+  transactionAmount: number | undefined,
+  tolerance = 0.01
+) {
+  if (typeof transactionAmount !== "number" || Number.isNaN(transactionAmount)) {
+    return false;
+  }
+  return (
+    Math.abs(roundMoney(orderTotal) - roundMoney(transactionAmount)) <=
+    tolerance
+  );
 }

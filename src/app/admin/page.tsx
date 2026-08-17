@@ -38,6 +38,13 @@ type Order = {
   createdAt: string;
   billingName: string;
   billingEmail: string;
+  paymentProvider?: string;
+  shipStreet?: string;
+  shipCity?: string;
+  shipState?: string;
+  shipPostalCode?: string;
+  shipCountry?: string;
+  shipReferences?: string | null;
   user?: { name: string; email: string } | null;
   items: { name: string; quantity: number; price: number }[];
 };
@@ -51,6 +58,8 @@ type Dashboard = {
     inactiveCount: number;
     orderCount: number;
     revenue: number;
+    pendingCount?: number;
+    cancelledCount?: number;
     lowStockCount: number;
   };
 };
@@ -86,6 +95,9 @@ export default function AdminPage() {
   const [csvResult, setCsvResult] = useState<string>("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [providerFilter, setProviderFilter] = useState("all");
+  const [orderBusyId, setOrderBusyId] = useState<string | null>(null);
 
   async function load() {
     const res = await fetch("/api/admin/dashboard");
@@ -307,6 +319,33 @@ export default function AdminPage() {
     }
   }
 
+  async function updateOrder(
+    orderId: string,
+    payload: { status?: string; trackingNumber?: string }
+  ) {
+    setError("");
+    setMsg("");
+    setOrderBusyId(orderId);
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setError(json.error || "No se pudo actualizar el pedido");
+        return;
+      }
+      setMsg(`Pedido ${json.order.trackingNumber} actualizado.`);
+      await load();
+    } catch {
+      setError("Error de red al actualizar el pedido");
+    } finally {
+      setOrderBusyId(null);
+    }
+  }
+
   if (loading) {
     return <div className="section-pad text-ink-muted">Cargando admin…</div>;
   }
@@ -338,12 +377,13 @@ export default function AdminPage() {
         </button>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {[
           ["Productos activos", data.stats.productCount],
           ["Inactivos", data.stats.inactiveCount ?? 0],
-          ["Pedidos", data.stats.orderCount],
+          ["Pedidos cobrados", data.stats.orderCount],
           ["Ingresos", formatPrice(data.stats.revenue)],
+          ["Pendientes", data.stats.pendingCount ?? 0],
           ["Alertas stock", data.stats.lowStockCount],
         ].map(([label, value]) => (
           <div
@@ -599,41 +639,127 @@ export default function AdminPage() {
       )}
 
       {tab === "sales" && (
-        <ul className="space-y-4">
-          {data.orders.length === 0 && (
-            <p className="text-ink-muted">Aún no hay ventas.</p>
-          )}
-          {data.orders.map((o) => (
-            <li
-              key={o.id}
-              className="border border-ink/10 bg-white/50 p-4"
-            >
-              <div className="flex flex-wrap justify-between gap-2">
-                <div>
-                  <p className="font-medium">{o.trackingNumber}</p>
-                  <p className="text-xs text-ink-muted">
-                    {format(new Date(o.createdAt), "d MMM yyyy HH:mm", {
-                      locale: es,
-                    })}{" "}
-                    · {o.status}
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-3">
+            <label className="text-sm text-ink-muted">
+              Estado{" "}
+              <select
+                className="field mt-1 w-auto min-w-[160px]"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                <option value="all">Todos</option>
+                <option value="pending_payment">Pendiente</option>
+                <option value="confirmed">Confirmado</option>
+                <option value="shipped">Enviado</option>
+                <option value="cancelled">Cancelado</option>
+                <option value="refunded">Reembolsado</option>
+              </select>
+            </label>
+            <label className="text-sm text-ink-muted">
+              Pago{" "}
+              <select
+                className="field mt-1 w-auto min-w-[160px]"
+                value={providerFilter}
+                onChange={(e) => setProviderFilter(e.target.value)}
+              >
+                <option value="all">Todos</option>
+                <option value="mercadopago">Mercado Pago</option>
+                <option value="card">Tarjeta demo</option>
+              </select>
+            </label>
+          </div>
+          <ul className="space-y-4">
+            {data.orders.filter((o) => {
+              if (statusFilter !== "all" && o.status !== statusFilter)
+                return false;
+              if (
+                providerFilter !== "all" &&
+                (o.paymentProvider || "card") !== providerFilter
+              )
+                return false;
+              return true;
+            }).length === 0 && (
+              <p className="text-ink-muted">No hay ventas con esos filtros.</p>
+            )}
+            {data.orders
+              .filter((o) => {
+                if (statusFilter !== "all" && o.status !== statusFilter)
+                  return false;
+                if (
+                  providerFilter !== "all" &&
+                  (o.paymentProvider || "card") !== providerFilter
+                )
+                  return false;
+                return true;
+              })
+              .map((o) => (
+                <li
+                  key={o.id}
+                  className="border border-ink/10 bg-white/50 p-4"
+                >
+                  <div className="flex flex-wrap justify-between gap-2">
+                    <div>
+                      <p className="font-medium">{o.trackingNumber}</p>
+                      <p className="text-xs text-ink-muted">
+                        {format(new Date(o.createdAt), "d MMM yyyy HH:mm", {
+                          locale: es,
+                        })}{" "}
+                        · {o.status} · {o.paymentProvider || "card"}
+                      </p>
+                      <p className="mt-1 text-sm">
+                        {o.user?.name || o.billingName} ·{" "}
+                        {o.user?.email || o.billingEmail}
+                      </p>
+                      {(o.shipStreet || o.shipCity) && (
+                        <p className="mt-1 text-xs text-ink-muted">
+                          {o.shipStreet}, {o.shipCity}, {o.shipState}{" "}
+                          {o.shipPostalCode}, {o.shipCountry}
+                          {o.shipReferences ? ` · ${o.shipReferences}` : ""}
+                        </p>
+                      )}
+                    </div>
+                    <p className="font-display text-xl">
+                      {formatPrice(o.total)}
+                    </p>
+                  </div>
+                  <p className="mt-2 text-sm text-ink-muted">
+                    {o.items
+                      .map((i) => `${i.name} ×${i.quantity}`)
+                      .join(" · ")}
                   </p>
-                  <p className="mt-1 text-sm">
-                    {o.user?.name || o.billingName} ·{" "}
-                    {o.user?.email || o.billingEmail}
-                  </p>
-                </div>
-                <p className="font-display text-xl">
-                  {formatPrice(o.total)}
-                </p>
-              </div>
-              <p className="mt-2 text-sm text-ink-muted">
-                {o.items
-                  .map((i) => `${i.name} ×${i.quantity}`)
-                  .join(" · ")}
-              </p>
-            </li>
-          ))}
-        </ul>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {o.status === "confirmed" && (
+                      <button
+                        type="button"
+                        className="btn-ghost text-xs"
+                        disabled={orderBusyId === o.id}
+                        onClick={() =>
+                          updateOrder(o.id, { status: "shipped" })
+                        }
+                      >
+                        Marcar enviado
+                      </button>
+                    )}
+                    <label className="flex items-center gap-2 text-xs text-ink-muted">
+                      Tracking
+                      <input
+                        className="field h-8 w-36 px-2 py-0 text-xs"
+                        defaultValue={o.trackingNumber}
+                        key={`${o.id}-${o.trackingNumber}`}
+                        onBlur={(e) => {
+                          const next = e.target.value.trim();
+                          if (next && next !== o.trackingNumber) {
+                            updateOrder(o.id, { trackingNumber: next });
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+                </li>
+              ))}
+          </ul>
+        </div>
       )}
 
       {tab === "form" && (
