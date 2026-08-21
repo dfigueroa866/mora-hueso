@@ -94,10 +94,4 @@ export const checkoutSchema = z.object({
   shipReferences: z.string().optional(),
   billingName: z.string().min(2),
   billingEmail: z.string().email(),
-  cardNumber: z
-    .string()
-    .transform((v) => v.replace(/\s/g, ""))
-    .refine((v) => /^\d{16}$/.test(v), "La tarjeta debe tener 16 dígitos"),
-  cardExpiry: z.string().regex(/^(0[1-9]|1[0-2])\/\d{2}$/, "Formato MM/AA"),
-  cardCvc: z.string().regex(/^\d{3,4}$/, "CVC inválido"),
 });

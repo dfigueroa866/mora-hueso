@@ -8,6 +8,12 @@ import {
   roundMoney,
 } from "@/lib/constants";
 import { checkoutSchema } from "@/lib/validators";
+import {
+  allowDemoPayments,
+  createCheckoutPreference,
+  getAppBaseUrl,
+  hasMercadoPagoToken,
+} from "@/lib/mercadopago";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -21,6 +27,7 @@ export async function POST(req: NextRequest) {
 
   const data = parsed.data;
   const session = await getSession();
+  const baseUrl = getAppBaseUrl(req.url);
 
   const productIds = data.items.map((i) => i.productId);
   const products = await prisma.product.findMany({
@@ -69,8 +76,6 @@ export async function POST(req: NextRequest) {
   const shippingCost = shipping.cost;
   const total = roundMoney(subtotal + tax + shippingCost);
   const trackingNumber = generateTrackingNumber();
-  const cardDigits = data.cardNumber.replace(/\s/g, "");
-  const cardLast4 = cardDigits.slice(-4);
 
   try {
     const order = await prisma.$transaction(async (tx) => {
@@ -88,7 +93,7 @@ export async function POST(req: NextRequest) {
         data: {
           userId: session?.id,
           guestEmail: session ? null : data.billingEmail,
-          status: "confirmed",
+          status: "pending_payment",
           subtotal,
           tax,
           shippingCost,
@@ -103,7 +108,7 @@ export async function POST(req: NextRequest) {
           shipReferences: data.shipReferences || null,
           billingName: data.billingName,
           billingEmail: data.billingEmail,
-          cardLast4,
+          paymentProvider: hasMercadoPagoToken() ? "mercadopago" : "demo",
           items: {
             create: lineItems.map((i) => ({
               productId: i.productId,
@@ -118,25 +123,94 @@ export async function POST(req: NextRequest) {
       });
     });
 
-    // Demo: "email" confirmation logged server-side
-    console.log(
-      `[Mora & Hueso] Pedido ${order.trackingNumber} confirmado → ${data.billingEmail}`
-    );
+    // Real Mercado Pago Checkout Pro
+    if (hasMercadoPagoToken()) {
+      try {
+        const pref = await createCheckoutPreference({
+          orderId: order.id,
+          trackingNumber: order.trackingNumber,
+          total: order.total,
+          items: [
+            ...lineItems.map((i) => ({
+              title: i.name,
+              quantity: i.quantity,
+              unitPrice: i.price,
+            })),
+            ...(tax > 0
+              ? [{ title: "IVA", quantity: 1, unitPrice: tax }]
+              : []),
+            {
+              title: `Envío ${shipping.label}`,
+              quantity: 1,
+              unitPrice: shippingCost,
+            },
+          ],
+          payerEmail: data.billingEmail,
+          payerName: data.billingName,
+          baseUrl,
+        });
 
-    return NextResponse.json({
-      order: {
-        id: order.id,
-        trackingNumber: order.trackingNumber,
-        total: order.total,
-        subtotal: order.subtotal,
-        tax: order.tax,
-        shippingCost: order.shippingCost,
-        shippingMethod: order.shippingMethod,
-        status: order.status,
-        items: order.items,
-        emailSentTo: data.billingEmail,
+        await prisma.order.update({
+          where: { id: order.id },
+          data: { mpPreferenceId: pref.preferenceId },
+        });
+
+        return NextResponse.json({
+          checkoutUrl: pref.initPoint,
+          provider: "mercadopago",
+          order: {
+            id: order.id,
+            trackingNumber: order.trackingNumber,
+            total: order.total,
+            subtotal: order.subtotal,
+            tax: order.tax,
+            shippingCost: order.shippingCost,
+            shippingMethod: order.shippingMethod,
+            status: order.status,
+            items: order.items,
+            emailSentTo: data.billingEmail,
+          },
+        });
+      } catch (err) {
+        console.error("Mercado Pago preference error", err);
+        return NextResponse.json(
+          {
+            error:
+              "No se pudo iniciar el pago con Mercado Pago. Revisa el Access Token.",
+          },
+          { status: 502 }
+        );
+      }
+    }
+
+    // Demo local without credentials
+    if (allowDemoPayments()) {
+      const demoUrl = `${baseUrl}/pago/demo?t=${order.trackingNumber}&orderId=${order.id}`;
+      return NextResponse.json({
+        checkoutUrl: demoUrl,
+        provider: "demo",
+        order: {
+          id: order.id,
+          trackingNumber: order.trackingNumber,
+          total: order.total,
+          subtotal: order.subtotal,
+          tax: order.tax,
+          shippingCost: order.shippingCost,
+          shippingMethod: order.shippingMethod,
+          status: order.status,
+          items: order.items,
+          emailSentTo: data.billingEmail,
+        },
+      });
+    }
+
+    return NextResponse.json(
+      {
+        error:
+          "Configura MERCADOPAGO_ACCESS_TOKEN para aceptar pagos reales, o ALLOW_DEMO_PAYMENTS=true para pruebas locales.",
       },
-    });
+      { status: 503 }
+    );
   } catch (e) {
     const msg = e instanceof Error ? e.message : "";
     if (msg.startsWith("STOCK:")) {
@@ -145,6 +219,7 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    console.error(e);
     return NextResponse.json(
       { error: "No se pudo procesar el pedido" },
       { status: 500 }

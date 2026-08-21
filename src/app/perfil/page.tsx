@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/constants";
+import { orderStatusLabel } from "@/lib/orders";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 
@@ -331,7 +332,7 @@ export default function ProfilePage() {
                     {format(new Date(o.createdAt), "d MMM yyyy · HH:mm", {
                       locale: es,
                     })}{" "}
-                    · {o.status}
+                    · {orderStatusLabel(o.status)}
                   </p>
                   <p className="mt-1 text-sm text-ink-muted">
                     {o.items
