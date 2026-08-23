@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client-v2"
 }
 
 datasource db {
@@ -17,7 +18,6 @@ model Product {
   sku         String      @unique
   supplier    String
   packageSize String
-  dogSize     String
   ingredients String
   nutrition   String
   image       String

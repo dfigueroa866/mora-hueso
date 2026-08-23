@@ -1,4 +1,4 @@
-export const FIRST_PURCHASE_PROMO_SEEN_KEY = "mh_first_purchase_promo_seen";
+export const FIRST_PURCHASE_PROMO_SEEN_KEY = "mh_first_purchase_announcement_v2";
 export const FIRST_PURCHASE_PROMO_DISMISSED_EVENT =
   "mh-first-purchase-promo-dismissed";
 

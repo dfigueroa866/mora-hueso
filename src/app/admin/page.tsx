@@ -3,15 +3,13 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
 import {
   CATEGORIES,
-  DOG_SIZES,
   formatPrice,
   categoryLabel,
 } from "@/lib/constants";
 import { AdminPolicies } from "@/components/AdminPolicies";
+import { AdminSales } from "@/components/AdminSales";
 
 type Product = {
   id: string;
@@ -23,7 +21,6 @@ type Product = {
   sku: string;
   supplier: string;
   packageSize: string;
-  dogSize: string;
   ingredients: string;
   nutrition: string;
   image: string;
@@ -65,7 +62,6 @@ const emptyForm = {
   sku: "",
   supplier: "",
   packageSize: "100 g",
-  dogSize: "todos",
   ingredients: "",
   nutrition: '{"protein":"10%","fat":"5%","fiber":"3%","moisture":"10%","ash":"4%"}',
   image:
@@ -122,7 +118,6 @@ export default function AdminPage() {
       sku: p.sku,
       supplier: p.supplier,
       packageSize: p.packageSize,
-      dogSize: p.dogSize,
       ingredients: p.ingredients,
       nutrition: p.nutrition,
       image: p.image,
@@ -602,43 +597,7 @@ export default function AdminPage() {
         </div>
       )}
 
-      {tab === "sales" && (
-        <ul className="space-y-4">
-          {data.orders.length === 0 && (
-            <p className="text-ink-muted">Aún no hay ventas.</p>
-          )}
-          {data.orders.map((o) => (
-            <li
-              key={o.id}
-              className="border border-ink/10 bg-white/50 p-4"
-            >
-              <div className="flex flex-wrap justify-between gap-2">
-                <div>
-                  <p className="font-medium">{o.trackingNumber}</p>
-                  <p className="text-xs text-ink-muted">
-                    {format(new Date(o.createdAt), "d MMM yyyy HH:mm", {
-                      locale: es,
-                    })}{" "}
-                    · {o.status}
-                  </p>
-                  <p className="mt-1 text-sm">
-                    {o.user?.name || o.billingName} ·{" "}
-                    {o.user?.email || o.billingEmail}
-                  </p>
-                </div>
-                <p className="font-display text-xl">
-                  {formatPrice(o.total)}
-                </p>
-              </div>
-              <p className="mt-2 text-sm text-ink-muted">
-                {o.items
-                  .map((i) => `${i.name} ×${i.quantity}`)
-                  .join(" · ")}
-              </p>
-            </li>
-          ))}
-        </ul>
-      )}
+      {tab === "sales" && <AdminSales products={data.products} />}
 
       {tab === "policies" && <AdminPolicies />}
 
@@ -725,20 +684,6 @@ export default function AdminPage() {
               {CATEGORIES.map((c) => (
                 <option key={c.value} value={c.value}>
                   {c.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="label">Tamaño de perro</label>
-            <select
-              className="field"
-              value={form.dogSize}
-              onChange={(e) => setForm({ ...form, dogSize: e.target.value })}
-            >
-              {DOG_SIZES.map((d) => (
-                <option key={d.value} value={d.value}>
-                  {d.label}
                 </option>
               ))}
             </select>

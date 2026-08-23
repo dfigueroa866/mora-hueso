@@ -5,13 +5,6 @@ export const CATEGORIES = [
   { value: "dentales", label: "Snacks dentales" },
 ] as const;
 
-export const DOG_SIZES = [
-  { value: "pequeno", label: "Pequeño" },
-  { value: "mediano", label: "Mediano" },
-  { value: "grande", label: "Grande" },
-  { value: "todos", label: "Todos los tamaños" },
-] as const;
-
 export const SHIPPING_METHODS = [
   {
     value: "standard",
@@ -52,10 +45,6 @@ export const SOCIAL_LINKS = [
 
 export function categoryLabel(value: string) {
   return CATEGORIES.find((c) => c.value === value)?.label ?? value;
-}
-
-export function dogSizeLabel(value: string) {
-  return DOG_SIZES.find((d) => d.value === value)?.label ?? value;
 }
 
 export function formatPrice(amount: number) {

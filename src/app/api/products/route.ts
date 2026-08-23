@@ -4,7 +4,6 @@ import { prisma } from "@/lib/db";
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const category = searchParams.get("category");
-  const dogSize = searchParams.get("dogSize");
   const ingredient = searchParams.get("ingredient");
   const minPrice = searchParams.get("minPrice");
   const maxPrice = searchParams.get("maxPrice");
@@ -14,9 +13,6 @@ export async function GET(req: NextRequest) {
   const where: Record<string, unknown> = {};
   if (!admin) where.active = true;
   if (category) where.category = category;
-  if (dogSize && dogSize !== "todos") {
-    where.OR = [{ dogSize }, { dogSize: "todos" }];
-  }
   if (minPrice || maxPrice) {
     where.price = {
       ...(minPrice ? { gte: Number(minPrice) } : {}),

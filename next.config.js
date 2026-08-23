@@ -1,4 +1,6 @@
 /** @type {import('next').NextConfig} */
+const path = require("path");
+
 const nextConfig = {
   // Allow Cloud Agent public tunnels (iPad / mobile preview)
   allowedDevOrigins: [
@@ -10,6 +12,13 @@ const nextConfig = {
     remotePatterns: [
       { protocol: "https", hostname: "images.unsplash.com" },
     ],
+  },
+  webpack: (config) => {
+    config.resolve.alias["@prisma-client"] = path.resolve(
+      __dirname,
+      "node_modules/.prisma/client-v2"
+    );
+    return config;
   },
 };
 

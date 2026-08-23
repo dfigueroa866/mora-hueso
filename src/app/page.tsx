@@ -23,7 +23,7 @@ export default async function HomePage() {
             Catálogo
           </h2>
           <p className="mt-2 text-ink-muted">
-            Filtra por categoría, tamaño de perro, precio e ingredientes.
+            Filtra por categoría, precio e ingredientes.
           </p>
         </div>
         <CatalogFilters products={products} />

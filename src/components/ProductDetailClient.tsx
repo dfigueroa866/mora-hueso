@@ -6,7 +6,6 @@ import { useCart } from "@/lib/cart-store";
 import {
   formatPrice,
   categoryLabel,
-  dogSizeLabel,
   isAvailable,
 } from "@/lib/constants";
 
@@ -18,7 +17,6 @@ type Product = {
   category: string;
   stock: number;
   packageSize: string;
-  dogSize: string;
   ingredients: string;
   nutrition: string;
   image: string;
@@ -75,9 +73,6 @@ export function ProductDetailClient({ product }: { product: Product }) {
         </p>
 
         <div className="mt-6 flex flex-wrap gap-3 text-sm">
-          <span className="border border-ink/15 px-3 py-1.5">
-            Perro: {dogSizeLabel(product.dogSize)}
-          </span>
           <span className="border border-ink/15 px-3 py-1.5">
             SKU: {product.sku}
           </span>

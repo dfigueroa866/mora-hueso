@@ -1,6 +1,26 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "../node_modules/.prisma/client-v2";
 import bcrypt from "bcryptjs";
+import fs from "fs";
+import path from "path";
 import { LEGAL_DEFAULTS, LEGAL_META, LEGAL_SLUGS } from "../src/lib/legal";
+
+if (!process.env.DATABASE_URL) {
+  const envPath = path.resolve(process.cwd(), ".env");
+  if (fs.existsSync(envPath)) {
+    for (const line of fs.readFileSync(envPath, "utf8").split(/\r?\n/)) {
+      const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
+      if (!m) continue;
+      let value = m[2].trim();
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
+        value = value.slice(1, -1);
+      }
+      if (!process.env[m[1]]) process.env[m[1]] = value;
+    }
+  }
+}
 
 const prisma = new PrismaClient();
 
@@ -15,7 +35,6 @@ const products = [
     sku: "MH-NAT-001",
     supplier: "Rancho Alto",
     packageSize: "150 g",
-    dogSize: "todos",
     ingredients: "res, nada más",
     nutrition: JSON.stringify({
       protein: "68%",
@@ -38,7 +57,6 @@ const products = [
     sku: "MH-GAL-002",
     supplier: "Horno Canino",
     packageSize: "200 g",
-    dogSize: "pequeno",
     ingredients: "avena, calabaza, huevo, aceite de coco",
     nutrition: JSON.stringify({
       protein: "14%",
@@ -61,7 +79,6 @@ const products = [
     sku: "MH-HUE-003",
     supplier: "Masticables del Sur",
     packageSize: "1 pza · 80 g",
-    dogSize: "mediano",
     ingredients: "yuca, almidón vegetal",
     nutrition: JSON.stringify({
       protein: "3%",
@@ -84,7 +101,6 @@ const products = [
     sku: "MH-DEN-004",
     supplier: "SmilePaw",
     packageSize: "12 pzas · 180 g",
-    dogSize: "grande",
     ingredients: "arroz, menta, clorofila, aceite de pescado",
     nutrition: JSON.stringify({
       protein: "12%",
@@ -107,7 +123,6 @@ const products = [
     sku: "MH-NAT-005",
     supplier: "Rancho Alto",
     packageSize: "100 g",
-    dogSize: "todos",
     ingredients: "pollo",
     nutrition: JSON.stringify({
       protein: "78%",
@@ -130,7 +145,6 @@ const products = [
     sku: "MH-GAL-006",
     supplier: "Horno Canino",
     packageSize: "180 g",
-    dogSize: "pequeno",
     ingredients: "harina de arroz, manzana, canela, miel",
     nutrition: JSON.stringify({
       protein: "10%",
@@ -153,7 +167,6 @@ const products = [
     sku: "MH-HUE-007",
     supplier: "Masticables del Sur",
     packageSize: "1 pza · 120 g",
-    dogSize: "grande",
     ingredients: "tendón de res",
     nutrition: JSON.stringify({
       protein: "82%",
@@ -176,7 +189,6 @@ const products = [
     sku: "MH-DEN-008",
     supplier: "SmilePaw",
     packageSize: "10 pzas · 160 g",
-    dogSize: "mediano",
     ingredients: "arroz, aceite de coco, zanahoria, perejil",
     nutrition: JSON.stringify({
       protein: "11%",
@@ -190,6 +202,307 @@ const products = [
     lowStockAt: 10,
   },
 ];
+
+const TAX_RATE = 0.16;
+const FIRST_PURCHASE_RATE = 0.1;
+const SALES_STATUSES = new Set(["paid", "shipped", "confirmed"]);
+
+type CatalogProduct = {
+  id: string;
+  name: string;
+  sku: string;
+  price: number;
+  image: string;
+};
+
+type SeedBuyer = {
+  userId: string | null;
+  name: string;
+  email: string;
+  street: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  references: string;
+};
+
+function roundMoney(n: number) {
+  return Math.round(n * 100) / 100;
+}
+
+function mulberry32(seed: number) {
+  return function rand() {
+    let t = (seed += 0x6d2b79f5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function daysInMonth(year: number, monthIndex: number) {
+  return new Date(year, monthIndex + 1, 0).getDate();
+}
+
+function mexicoDate(
+  year: number,
+  monthIndex: number,
+  day: number,
+  hour: number,
+  minute: number
+) {
+  const mm = String(monthIndex + 1).padStart(2, "0");
+  const dd = String(day).padStart(2, "0");
+  const hh = String(hour).padStart(2, "0");
+  const mi = String(minute).padStart(2, "0");
+  return new Date(`${year}-${mm}-${dd}T${hh}:${mi}:00-06:00`);
+}
+
+function calcTotals(
+  subtotal: number,
+  shippingCost: number,
+  applyDiscount: boolean
+) {
+  const discount = applyDiscount
+    ? roundMoney(subtotal * FIRST_PURCHASE_RATE)
+    : 0;
+  const taxable = roundMoney(Math.max(0, subtotal - discount));
+  const tax = roundMoney(taxable * TAX_RATE);
+  const total = roundMoney(taxable + tax + shippingCost);
+  return { discount, tax, total };
+}
+
+async function seedYearOfOrders(
+  catalog: CatalogProduct[],
+  buyers: SeedBuyer[],
+  demoCustomer: SeedBuyer
+) {
+  const rand = mulberry32(20260823);
+  const randInt = (min: number, max: number) =>
+    min + Math.floor(rand() * (max - min + 1));
+  const pick = <T,>(list: T[]) => list[Math.floor(rand() * list.length)];
+
+  const seenEmails = new Set<string>();
+  let seq = 1;
+  let created = 0;
+  let countedSales = 0;
+
+  const skuWeights: Record<string, number> = {
+    "MH-NAT-001": 5,
+    "MH-GAL-002": 4,
+    "MH-HUE-003": 2,
+    "MH-DEN-004": 3,
+    "MH-NAT-005": 5,
+    "MH-GAL-006": 2,
+    "MH-HUE-007": 3,
+    "MH-DEN-008": 2,
+  };
+
+  function pickProduct() {
+    const weighted = catalog.flatMap((p) =>
+      Array.from({ length: skuWeights[p.sku] ?? 1 }, () => p)
+    );
+    return weighted[Math.floor(rand() * weighted.length)] ?? catalog[0];
+  }
+
+  async function createOrder(opts: {
+    at: Date;
+    buyer: SeedBuyer;
+    status: string;
+    trackingNumber?: string;
+    forceItems?: { product: CatalogProduct; quantity: number }[];
+    forceShipping?: "standard" | "express";
+    skipPaidAt?: boolean;
+  }) {
+    const itemCount = opts.forceItems
+      ? opts.forceItems.length
+      : randInt(1, 3);
+    const chosen = opts.forceItems
+      ? opts.forceItems
+      : Array.from({ length: itemCount }, () => ({
+          product: pickProduct(),
+          quantity: randInt(1, 3),
+        }));
+
+    const merged = new Map<
+      string,
+      { product: CatalogProduct; quantity: number }
+    >();
+    for (const row of chosen) {
+      const prev = merged.get(row.product.id);
+      if (prev) prev.quantity += row.quantity;
+      else merged.set(row.product.id, { ...row });
+    }
+    const lines = Array.from(merged.values());
+    const subtotal = roundMoney(
+      lines.reduce((s, l) => s + l.product.price * l.quantity, 0)
+    );
+    const shippingMethod =
+      opts.forceShipping ?? (rand() < 0.22 ? "express" : "standard");
+    const shippingCost = shippingMethod === "express" ? 149 : 79;
+    const email = opts.buyer.email.toLowerCase();
+    const isSale = SALES_STATUSES.has(opts.status);
+    const applyDiscount = isSale && !seenEmails.has(email);
+    if (isSale) seenEmails.add(email);
+    const { discount, tax, total } = calcTotals(
+      subtotal,
+      shippingCost,
+      applyDiscount
+    );
+    const tracking =
+      opts.trackingNumber ?? `MH-YR-${String(seq).padStart(4, "0")}`;
+    seq += 1;
+    const paidAt =
+      isSale && !opts.skipPaidAt
+        ? new Date(opts.at.getTime() + randInt(4, 90) * 60 * 1000)
+        : null;
+
+    await prisma.order.create({
+      data: {
+        userId: opts.buyer.userId,
+        guestEmail: opts.buyer.userId ? null : opts.buyer.email,
+        status: opts.status,
+        subtotal,
+        discount,
+        tax,
+        shippingCost,
+        total,
+        shippingMethod,
+        trackingNumber: tracking,
+        shipStreet: opts.buyer.street,
+        shipCity: opts.buyer.city,
+        shipState: opts.buyer.state,
+        shipPostalCode: opts.buyer.postalCode,
+        shipCountry: "México",
+        shipReferences: opts.buyer.references,
+        billingName: opts.buyer.name,
+        billingEmail: opts.buyer.email,
+        cardLast4: String(1000 + randInt(0, 8999)),
+        paymentProvider: "mercadopago",
+        paidAt,
+        createdAt: opts.at,
+        items: {
+          create: lines.map((l) => ({
+            productId: l.product.id,
+            name: l.product.name,
+            sku: l.product.sku,
+            quantity: l.quantity,
+            price: l.product.price,
+          })),
+        },
+      },
+    });
+    created += 1;
+    if (isSale) countedSales += 1;
+  }
+
+  function monthOrderCount(year: number, monthIndex: number) {
+    // Agosto 2025 solo tiene la última semana; agosto 2026 hasta el día 23.
+    if (year === 2025 && monthIndex === 7) return 8;
+    if (year === 2026 && monthIndex === 7) return 14;
+    if (monthIndex === 11) return 24;
+    if (monthIndex === 10) return 16;
+    if (monthIndex === 0) return 9;
+    if (monthIndex === 4 || monthIndex === 5) return 12;
+    return 11;
+  }
+
+  function pickStatus() {
+    const roll = rand();
+    if (roll < 0.06) return "pending_payment";
+    if (roll < 0.11) return "cancelled";
+    if (roll < 0.42) return "paid";
+    if (roll < 0.82) return "shipped";
+    return "confirmed";
+  }
+
+  for (let year = 2025; year <= 2026; year++) {
+    const startMonth = year === 2025 ? 7 : 0;
+    const endMonth = year === 2026 ? 7 : 11;
+    for (let month = startMonth; month <= endMonth; month++) {
+      const maxDay = daysInMonth(year, month);
+      const fromDay = year === 2025 && month === 7 ? 24 : 1;
+      const toDay = year === 2026 && month === 7 ? 23 : maxDay;
+      const count = monthOrderCount(year, month);
+      for (let i = 0; i < count; i++) {
+        const day = randInt(fromDay, toDay);
+        const at = mexicoDate(
+          year,
+          month,
+          day,
+          randInt(8, 21),
+          randInt(0, 59)
+        );
+        await createOrder({
+          at,
+          buyer: pick(buyers),
+          status: pickStatus(),
+        });
+      }
+    }
+  }
+
+  const moritas = catalog.find((p) => p.sku === "MH-NAT-001") ?? catalog[0];
+  const galletas = catalog.find((p) => p.sku === "MH-GAL-002") ?? catalog[1];
+
+  // Anclas para validar filtros: hoy, 7 días, 30 días, mes, año, inicio del periodo.
+  await createOrder({
+    at: mexicoDate(2026, 7, 17, 21, 22),
+    buyer: demoCustomer,
+    status: "shipped",
+    trackingNumber: "MH-DEMO-1001",
+    forceItems: [
+      { product: moritas, quantity: 2 },
+      { product: galletas, quantity: 1 },
+    ],
+    forceShipping: "standard",
+    skipPaidAt: true,
+  });
+  await createOrder({
+    at: mexicoDate(2026, 7, 23, 10, 15),
+    buyer: demoCustomer,
+    status: "paid",
+    trackingNumber: "MH-HOY-0001",
+    forceItems: [{ product: moritas, quantity: 1 }],
+  });
+  await createOrder({
+    at: mexicoDate(2026, 7, 20, 16, 40),
+    buyer: pick(buyers),
+    status: "confirmed",
+    trackingNumber: "MH-7D-0001",
+  });
+  await createOrder({
+    at: mexicoDate(2026, 6, 28, 11, 5),
+    buyer: pick(buyers),
+    status: "paid",
+    trackingNumber: "MH-30D-0001",
+  });
+  await createOrder({
+    at: mexicoDate(2026, 0, 12, 9, 30),
+    buyer: pick(buyers),
+    status: "shipped",
+    trackingNumber: "MH-ANO-0001",
+  });
+  await createOrder({
+    at: mexicoDate(2025, 7, 24, 13, 0),
+    buyer: pick(buyers),
+    status: "paid",
+    trackingNumber: "MH-INI-0001",
+  });
+  await createOrder({
+    at: mexicoDate(2026, 7, 22, 19, 45),
+    buyer: pick(buyers),
+    status: "pending_payment",
+    trackingNumber: "MH-PEND-0001",
+  });
+  await createOrder({
+    at: mexicoDate(2026, 7, 21, 12, 10),
+    buyer: pick(buyers),
+    status: "cancelled",
+    trackingNumber: "MH-CANC-0001",
+  });
+
+  return { created, countedSales };
+}
 
 async function main() {
   await prisma.reviewPhoto.deleteMany();
@@ -240,51 +553,115 @@ async function main() {
     },
   });
 
-  const sampleProducts = await prisma.product.findMany({ take: 3 });
-  if (sampleProducts.length >= 2) {
-    const subtotal = sampleProducts[0].price * 2 + sampleProducts[1].price;
-    const tax = Math.round(subtotal * 0.16 * 100) / 100;
-    const shippingCost = 79;
-    await prisma.order.create({
+  const extraBuyersData = [
+    {
+      name: "Luis García",
+      email: "luis@demo.com",
+      phone: "3331112233",
+      street: "Av. Chapultepec 450",
+      city: "Guadalajara",
+      state: "Jalisco",
+      postalCode: "44100",
+      references: "Portón negro",
+    },
+    {
+      name: "María López",
+      email: "maria@demo.com",
+      phone: "8185551212",
+      street: "Calle Morelos 88",
+      city: "Monterrey",
+      state: "Nuevo León",
+      postalCode: "64000",
+      references: "Casa de dos pisos",
+    },
+    {
+      name: "Carlos Ruiz",
+      email: "carlos@demo.com",
+      phone: "2224447788",
+      street: "Blvd. 5 de Mayo 210",
+      city: "Puebla",
+      state: "Puebla",
+      postalCode: "72000",
+      references: "Junto al parque",
+    },
+  ];
+
+  const extraUsers: SeedBuyer[] = [];
+  for (const b of extraBuyersData) {
+    const user = await prisma.user.create({
       data: {
-        userId: customer.id,
-        status: "shipped",
-        subtotal,
-        tax,
-        shippingCost,
-        total: Math.round((subtotal + tax + shippingCost) * 100) / 100,
-        shippingMethod: "standard",
-        trackingNumber: "MH-DEMO-1001",
-        shipStreet: "Av. Insurgentes Sur 1234",
-        shipCity: "Ciudad de México",
-        shipState: "CDMX",
-        shipPostalCode: "03100",
-        shipCountry: "México",
-        shipReferences: "Edificio azul, depto 4B",
-        billingName: "Ana Pérez",
-        billingEmail: "cliente@demo.com",
-        cardLast4: "4242",
-        items: {
-          create: [
-            {
-              productId: sampleProducts[0].id,
-              name: sampleProducts[0].name,
-              sku: sampleProducts[0].sku,
-              quantity: 2,
-              price: sampleProducts[0].price,
-            },
-            {
-              productId: sampleProducts[1].id,
-              name: sampleProducts[1].name,
-              sku: sampleProducts[1].sku,
-              quantity: 1,
-              price: sampleProducts[1].price,
-            },
-          ],
+        name: b.name,
+        email: b.email,
+        password: customerHash,
+        phone: b.phone,
+        role: "customer",
+        addresses: {
+          create: {
+            label: "Casa",
+            street: b.street,
+            city: b.city,
+            state: b.state,
+            postalCode: b.postalCode,
+            country: "México",
+            references: b.references,
+            isDefault: true,
+          },
         },
       },
     });
+    extraUsers.push({
+      userId: user.id,
+      name: b.name,
+      email: b.email,
+      street: b.street,
+      city: b.city,
+      state: b.state,
+      postalCode: b.postalCode,
+      references: b.references,
+    });
   }
+
+  const demoBuyer: SeedBuyer = {
+    userId: customer.id,
+    name: "Ana Pérez",
+    email: "cliente@demo.com",
+    street: "Av. Insurgentes Sur 1234",
+    city: "Ciudad de México",
+    state: "CDMX",
+    postalCode: "03100",
+    references: "Edificio azul, depto 4B",
+  };
+
+  const guestBuyers: SeedBuyer[] = [
+    {
+      userId: null,
+      name: "Sofía Hernández",
+      email: "sofia.guest@demo.com",
+      street: "Calle 60 412",
+      city: "Mérida",
+      state: "Yucatán",
+      postalCode: "97000",
+      references: "Frente a la plaza",
+    },
+    {
+      userId: null,
+      name: "Jorge Medina",
+      email: "jorge.guest@demo.com",
+      street: "Av. Universidad 1500",
+      city: "Querétaro",
+      state: "Querétaro",
+      postalCode: "76000",
+      references: "Torre B, depto 8",
+    },
+  ];
+
+  const catalog = await prisma.product.findMany();
+  const sampleProducts = catalog.slice(0, 3);
+  const yearSales = await seedYearOfOrders(
+    catalog,
+    [demoBuyer, ...extraUsers, ...guestBuyers],
+    demoBuyer
+  );
 
   if (sampleProducts.length >= 2) {
     const demoReviews = [
@@ -371,6 +748,10 @@ async function main() {
   console.log(
     "Seed OK — productos:",
     products.length,
+    "| pedidos:",
+    yearSales.created,
+    "| ventas cobradas:",
+    yearSales.countedSales,
     "| políticas:",
     LEGAL_SLUGS.length,
     "| admin:",

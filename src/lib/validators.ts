@@ -58,7 +58,6 @@ export const productSchema = z.object({
   sku: z.string().min(3),
   supplier: z.string().min(2),
   packageSize: z.string().min(1),
-  dogSize: z.enum(["pequeno", "mediano", "grande", "todos"]),
   ingredients: z.string().min(2),
   nutrition: z.string().min(2),
   image: z.string().url().or(z.string().min(1)),

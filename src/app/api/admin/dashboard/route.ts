@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { SALES_STATUSES } from "@/lib/sales-report";
 
 export async function GET() {
   const admin = await requireAdmin();
@@ -25,6 +26,7 @@ export async function GET() {
       },
     }),
     prisma.order.aggregate({
+      where: { status: { in: [...SALES_STATUSES] } },
       _sum: { total: true },
       _count: true,
     }),
