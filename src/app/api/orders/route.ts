@@ -3,11 +3,53 @@ import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import {
   SHIPPING_METHODS,
-  TAX_RATE,
   generateTrackingNumber,
   roundMoney,
 } from "@/lib/constants";
 import { checkoutSchema } from "@/lib/validators";
+import {
+  allowDemoPayments,
+  createCheckoutPreference,
+  getAppBaseUrl,
+  hasMercadoPagoToken,
+} from "@/lib/mercadopago";
+import {
+  calcOrderTotals,
+  isFirstPurchaseEmail,
+  normalizeEmail,
+} from "@/lib/first-purchase";
+
+function orderPayload(
+  order: {
+    id: string;
+    trackingNumber: string;
+    total: number;
+    subtotal: number;
+    discount: number;
+    tax: number;
+    shippingCost: number;
+    shippingMethod: string;
+    status: string;
+    items: unknown;
+  },
+  email: string,
+  firstPurchase: boolean
+) {
+  return {
+    id: order.id,
+    trackingNumber: order.trackingNumber,
+    total: order.total,
+    subtotal: order.subtotal,
+    discount: order.discount,
+    tax: order.tax,
+    shippingCost: order.shippingCost,
+    shippingMethod: order.shippingMethod,
+    status: order.status,
+    items: order.items,
+    emailSentTo: email,
+    firstPurchaseDiscount: firstPurchase,
+  };
+}
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -21,6 +63,8 @@ export async function POST(req: NextRequest) {
 
   const data = parsed.data;
   const session = await getSession();
+  const baseUrl = getAppBaseUrl(req.url);
+  const billingEmail = normalizeEmail(data.billingEmail);
 
   const productIds = data.items.map((i) => i.productId);
   const products = await prisma.product.findMany({
@@ -64,13 +108,15 @@ export async function POST(req: NextRequest) {
   const subtotal = roundMoney(
     lineItems.reduce((s, i) => s + i.price * i.quantity, 0)
   );
-  const tax = roundMoney(subtotal * TAX_RATE);
   const shipping = SHIPPING_METHODS.find((m) => m.value === data.shippingMethod)!;
   const shippingCost = shipping.cost;
-  const total = roundMoney(subtotal + tax + shippingCost);
+  const firstPurchase = await isFirstPurchaseEmail(billingEmail);
+  const { discount, tax, total } = calcOrderTotals({
+    subtotal,
+    shippingCost,
+    applyFirstPurchaseDiscount: firstPurchase,
+  });
   const trackingNumber = generateTrackingNumber();
-  const cardDigits = data.cardNumber.replace(/\s/g, "");
-  const cardLast4 = cardDigits.slice(-4);
 
   try {
     const order = await prisma.$transaction(async (tx) => {
@@ -87,9 +133,10 @@ export async function POST(req: NextRequest) {
       return tx.order.create({
         data: {
           userId: session?.id,
-          guestEmail: session ? null : data.billingEmail,
-          status: "confirmed",
+          guestEmail: session ? null : billingEmail,
+          status: "pending_payment",
           subtotal,
+          discount,
           tax,
           shippingCost,
           total,
@@ -102,8 +149,8 @@ export async function POST(req: NextRequest) {
           shipCountry: data.shipCountry,
           shipReferences: data.shipReferences || null,
           billingName: data.billingName,
-          billingEmail: data.billingEmail,
-          cardLast4,
+          billingEmail,
+          paymentProvider: hasMercadoPagoToken() ? "mercadopago" : "demo",
           items: {
             create: lineItems.map((i) => ({
               productId: i.productId,
@@ -118,25 +165,94 @@ export async function POST(req: NextRequest) {
       });
     });
 
-    // Demo: "email" confirmation logged server-side
-    console.log(
-      `[Mora & Hueso] Pedido ${order.trackingNumber} confirmado → ${data.billingEmail}`
-    );
+    // MP no acepta unit_price negativo: el descuento se prorratea en productos.
+    const merchandiseNet = Math.max(0, roundMoney(subtotal - discount));
+    const productMpItems =
+      discount > 0 && subtotal > 0
+        ? (() => {
+            let remaining = merchandiseNet;
+            return lineItems.map((item, index) => {
+              const lineTotal = roundMoney(item.price * item.quantity);
+              const share =
+                index === lineItems.length - 1
+                  ? remaining
+                  : roundMoney((lineTotal / subtotal) * merchandiseNet);
+              if (index < lineItems.length - 1) {
+                remaining = roundMoney(remaining - share);
+              }
+              return {
+                title: item.name,
+                quantity: 1,
+                unitPrice: share,
+              };
+            });
+          })()
+        : lineItems.map((i) => ({
+            title: i.name,
+            quantity: i.quantity,
+            unitPrice: i.price,
+          }));
 
-    return NextResponse.json({
-      order: {
-        id: order.id,
-        trackingNumber: order.trackingNumber,
-        total: order.total,
-        subtotal: order.subtotal,
-        tax: order.tax,
-        shippingCost: order.shippingCost,
-        shippingMethod: order.shippingMethod,
-        status: order.status,
-        items: order.items,
-        emailSentTo: data.billingEmail,
+    const mpItems = [
+      ...productMpItems,
+      ...(tax > 0 ? [{ title: "IVA", quantity: 1, unitPrice: tax }] : []),
+      {
+        title: `Envío ${shipping.label}`,
+        quantity: 1,
+        unitPrice: shippingCost,
       },
-    });
+    ];
+
+    if (hasMercadoPagoToken()) {
+      try {
+        const pref = await createCheckoutPreference({
+          orderId: order.id,
+          trackingNumber: order.trackingNumber,
+          total: order.total,
+          items: mpItems,
+          payerEmail: billingEmail,
+          payerName: data.billingName,
+          baseUrl,
+        });
+
+        await prisma.order.update({
+          where: { id: order.id },
+          data: { mpPreferenceId: pref.preferenceId },
+        });
+
+        return NextResponse.json({
+          checkoutUrl: pref.initPoint,
+          provider: "mercadopago",
+          order: orderPayload(order, billingEmail, firstPurchase),
+        });
+      } catch (err) {
+        console.error("Mercado Pago preference error", err);
+        return NextResponse.json(
+          {
+            error:
+              "No se pudo iniciar el pago con Mercado Pago. Revisa el Access Token.",
+          },
+          { status: 502 }
+        );
+      }
+    }
+
+    if (allowDemoPayments()) {
+      const demoUrl = `${baseUrl}/pago/demo?t=${order.trackingNumber}&orderId=${order.id}`;
+      return NextResponse.json({
+        checkoutUrl: demoUrl,
+        provider: "demo",
+        order: orderPayload(order, billingEmail, firstPurchase),
+      });
+    }
+
+    return NextResponse.json(
+      {
+        error:
+          "Configura MERCADOPAGO_ACCESS_TOKEN para aceptar pagos reales, o ALLOW_DEMO_PAYMENTS=true para pruebas locales.",
+      },
+      { status: 503 }
+    );
   } catch (e) {
     const msg = e instanceof Error ? e.message : "";
     if (msg.startsWith("STOCK:")) {
@@ -145,6 +261,7 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    console.error(e);
     return NextResponse.json(
       { error: "No se pudo procesar el pedido" },
       { status: 500 }

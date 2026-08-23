@@ -3,6 +3,8 @@ import { Fraunces, Sora } from "next/font/google";
 import "./globals.css";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
+import { FirstPurchaseFooter } from "@/components/FirstPurchaseFooter";
+import { FirstPurchasePromo } from "@/components/FirstPurchasePromo";
 
 const display = Fraunces({
   subsets: ["latin"],
@@ -33,6 +35,8 @@ export default function RootLayout({
         <SiteHeader />
         <main className="min-h-[70vh]">{children}</main>
         <SiteFooter />
+        <FirstPurchaseFooter />
+        <FirstPurchasePromo />
       </body>
     </html>
   );

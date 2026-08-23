@@ -1,2 +1,2 @@
-name,description,price,category,stock,sku,supplier,packageSize,dogSize,ingredients,nutrition,image,lowStockAt
-"Galletas de Ejemplo","Galletas horneadas con ingredientes naturales para premios diarios.",129,galletas,25,MH-EJEMPLO-001,"Proveedor Demo","200 g",todos,"avena, calabaza, huevo","{""protein"":""14%"",""fat"":""8%"",""fiber"":""6%"",""moisture"":""8%"",""ash"":""4%""}","https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=800&q=80",10
+name,description,price,category,stock,sku,supplier,packageSize,ingredients,nutrition,image,lowStockAt
+"Galletas de Ejemplo","Galletas horneadas con ingredientes naturales para premios diarios.",129,galletas,25,MH-EJEMPLO-001,"Proveedor Demo","200 g","avena, calabaza, huevo","{""protein"":""14%"",""fat"":""8%"",""fiber"":""6%"",""moisture"":""8%"",""ash"":""4%""}","https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=800&q=80",10

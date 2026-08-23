@@ -105,7 +105,6 @@ export async function POST(req: NextRequest) {
           sku,
           supplier: data.supplier?.trim(),
           packageSize: data.packageSize?.trim(),
-          dogSize: data.dogSize?.trim().toLowerCase(),
           ingredients: data.ingredients?.trim(),
           nutrition,
           image: data.image?.trim(),

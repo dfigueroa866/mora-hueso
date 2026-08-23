@@ -1,33 +1,105 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/constants";
-import { Suspense } from "react";
 
-type Order = {
+type OrderView = {
+  id: string;
   trackingNumber: string;
+  status: string;
+  statusLabel?: string;
   total: number;
   subtotal: number;
+  discount?: number;
   tax: number;
   shippingCost: number;
-  emailSentTo: string;
+  billingEmail?: string;
+  emailSentTo?: string;
+  firstPurchaseDiscount?: boolean;
   items: { name: string; quantity: number; price: number }[];
 };
 
 function ConfirmationInner() {
   const params = useSearchParams();
-  const [order, setOrder] = useState<Order | null>(null);
+  const router = useRouter();
+  const [order, setOrder] = useState<OrderView | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const tracking = params.get("t") || "";
+  const statusHint = params.get("status") || params.get("collection_status") || "";
+  const paymentId =
+    params.get("payment_id") || params.get("collection_id") || "";
 
   useEffect(() => {
-    const raw = sessionStorage.getItem("mh_order");
-    if (raw) {
-      setOrder(JSON.parse(raw));
-    }
-  }, []);
+    async function run() {
+      const raw = sessionStorage.getItem("mh_order");
+      let local: OrderView | null = null;
+      if (raw) {
+        try {
+          local = JSON.parse(raw);
+        } catch {
+          local = null;
+        }
+      }
 
-  const tracking = params.get("t") || order?.trackingNumber;
+      const t = tracking || local?.trackingNumber || "";
+      if (!t) {
+        setLoading(false);
+        return;
+      }
+
+      if (statusHint || paymentId) {
+        try {
+          const sync = await fetch("/api/mercadopago/sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              trackingNumber: t,
+              paymentId: paymentId || undefined,
+              status: statusHint || undefined,
+            }),
+          });
+          const syncData = await sync.json();
+          if (sync.ok && syncData.order) {
+            setOrder({
+              ...syncData.order,
+              emailSentTo: syncData.order.billingEmail,
+            });
+            sessionStorage.setItem("mh_order", JSON.stringify(syncData.order));
+            setLoading(false);
+            return;
+          }
+        } catch {
+          /* fall through */
+        }
+      }
+
+      try {
+        const res = await fetch(`/api/orders/tracking/${encodeURIComponent(t)}`);
+        const data = await res.json();
+        if (res.ok && data.order) {
+          setOrder({
+            ...data.order,
+            emailSentTo: data.order.billingEmail,
+          });
+          sessionStorage.setItem("mh_order", JSON.stringify(data.order));
+        } else if (local) {
+          setOrder(local);
+        }
+      } catch {
+        if (local) setOrder(local);
+      } finally {
+        setLoading(false);
+      }
+    }
+    void run();
+  }, [tracking, statusHint, paymentId]);
+
+  if (loading) {
+    return <div className="section-pad text-ink-muted">Confirmando pago…</div>;
+  }
 
   if (!order && !tracking) {
     return (
@@ -41,23 +113,62 @@ function ConfirmationInner() {
     );
   }
 
+  const status = order?.status || "";
+  const isPaid = status === "paid" || status === "shipped" || status === "confirmed";
+  const isPending = status === "pending_payment" || statusHint === "pending";
+  const isCancelled =
+    status === "cancelled" ||
+    statusHint === "rejected" ||
+    statusHint === "failure";
+
   return (
     <div className="section-pad max-w-2xl">
-      <p className="animate-fade-in text-xs uppercase tracking-[0.2em] text-sage">
-        Pedido confirmado
+      <p
+        className={`animate-fade-in text-xs uppercase tracking-[0.2em] ${
+          isPaid ? "text-sage" : isCancelled ? "text-berry" : "text-ink-muted"
+        }`}
+      >
+        {isPaid
+          ? "Pago confirmado"
+          : isCancelled
+            ? "Pago no completado"
+            : "Pago pendiente"}
       </p>
       <h1 className="mt-2 animate-fade-up font-display text-4xl font-semibold md:text-5xl">
-        ¡Gracias por tu compra!
+        {isPaid
+          ? "¡Gracias por tu compra!"
+          : isCancelled
+            ? "No se pudo cobrar"
+            : "Estamos confirmando tu pago"}
       </h1>
       <p className="mt-4 text-ink-muted">
         Número de seguimiento:{" "}
-        <span className="font-medium text-ink">{tracking}</span>
+        <span className="font-medium text-ink">
+          {order?.trackingNumber || tracking}
+        </span>
       </p>
-      {order?.emailSentTo && (
+      {order?.statusLabel && (
         <p className="mt-2 text-sm text-ink-muted">
-          Enviamos el resumen a{" "}
-          <span className="text-ink">{order.emailSentTo}</span> (demo: también
-          en la consola del servidor).
+          Estado: <span className="text-ink">{order.statusLabel}</span>
+        </p>
+      )}
+      {order?.emailSentTo && isPaid && (
+        <p className="mt-2 text-sm text-ink-muted">
+          Enviaremos el resumen a{" "}
+          <span className="text-ink">{order.emailSentTo}</span>.
+        </p>
+      )}
+
+      {isPending && (
+        <p className="mt-4 text-sm text-ink-muted">
+          Si elegiste un medio en efectivo, el pedido se marcará como pagado
+          cuando Mercado Pago confirme la acreditación.
+        </p>
+      )}
+
+      {isCancelled && (
+        <p className="mt-4 text-sm text-ink-muted">
+          El stock se liberó. Puedes volver al carrito e intentar de nuevo.
         </p>
       )}
 
@@ -79,6 +190,12 @@ function ConfirmationInner() {
               <dt>Subtotal</dt>
               <dd>{formatPrice(order.subtotal)}</dd>
             </div>
+            {(order.discount ?? 0) > 0 && (
+              <div className="flex justify-between text-sage">
+                <dt>Descuento primera compra (10%)</dt>
+                <dd>−{formatPrice(order.discount!)}</dd>
+              </div>
+            )}
             <div className="flex justify-between">
               <dt>IVA</dt>
               <dd>{formatPrice(order.tax)}</dd>
@@ -96,9 +213,19 @@ function ConfirmationInner() {
       )}
 
       <div className="mt-8 flex flex-wrap gap-3">
-        <Link href="/perfil" className="btn-primary">
-          Ver mis pedidos
-        </Link>
+        {isCancelled ? (
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => router.push("/#catalogo")}
+          >
+            Volver al catálogo
+          </button>
+        ) : (
+          <Link href="/perfil" className="btn-primary">
+            Ver mis pedidos
+          </Link>
+        )}
         <Link href="/#catalogo" className="btn-ghost">
           Seguir comprando
         </Link>

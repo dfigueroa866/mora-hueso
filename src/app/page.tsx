@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { CatalogFilters } from "@/components/CatalogFilters";
 import { HeroCarousel } from "@/components/HeroCarousel";
 import { TrustStamps } from "@/components/TrustStamps";
+import { ReviewsSection } from "@/components/ReviewsSection";
 
 export const dynamic = "force-dynamic";
 
@@ -22,11 +23,15 @@ export default async function HomePage() {
             Catálogo
           </h2>
           <p className="mt-2 text-ink-muted">
-            Filtra por categoría, tamaño de perro, precio e ingredientes.
+            Filtra por categoría, precio e ingredientes.
           </p>
         </div>
         <CatalogFilters products={products} />
       </section>
+
+      <ReviewsSection
+        products={products.map((p) => ({ id: p.id, name: p.name }))}
+      />
     </>
   );
 }

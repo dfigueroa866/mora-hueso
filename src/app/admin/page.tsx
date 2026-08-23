@@ -1,16 +1,15 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
 import {
   CATEGORIES,
-  DOG_SIZES,
   formatPrice,
   categoryLabel,
 } from "@/lib/constants";
+import { AdminPolicies } from "@/components/AdminPolicies";
+import { AdminSales } from "@/components/AdminSales";
 
 type Product = {
   id: string;
@@ -22,7 +21,6 @@ type Product = {
   sku: string;
   supplier: string;
   packageSize: string;
-  dogSize: string;
   ingredients: string;
   nutrition: string;
   image: string;
@@ -55,6 +53,43 @@ type Dashboard = {
   };
 };
 
+const FIELD_LABELS: Record<string, string> = {
+  name: "Nombre",
+  description: "Descripción",
+  price: "Precio",
+  category: "Categoría",
+  stock: "Stock",
+  sku: "SKU",
+  supplier: "Proveedor",
+  packageSize: "Empaque",
+  ingredients: "Ingredientes",
+  nutrition: "Nutrición",
+  image: "Imagen",
+  lowStockAt: "Alerta de stock",
+  active: "Estado",
+};
+
+function formatSaveError(json: {
+  error?: string;
+  details?: {
+    fieldErrors?: Record<string, string[] | undefined>;
+    formErrors?: string[];
+  };
+}) {
+  const parts: string[] = [];
+  const fieldErrors = json.details?.fieldErrors || {};
+  for (const [key, messages] of Object.entries(fieldErrors)) {
+    if (!messages?.length) continue;
+    const label = FIELD_LABELS[key] || key;
+    parts.push(`${label}: ${messages.join(" ")}`);
+  }
+  if (json.details?.formErrors?.length) {
+    parts.push(...json.details.formErrors);
+  }
+  if (parts.length) return parts.join(" · ");
+  return json.error || "Error al guardar";
+}
+
 const emptyForm = {
   name: "",
   description: "",
@@ -64,7 +99,6 @@ const emptyForm = {
   sku: "",
   supplier: "",
   packageSize: "100 g",
-  dogSize: "todos",
   ingredients: "",
   nutrition: '{"protein":"10%","fat":"5%","fiber":"3%","moisture":"10%","ash":"4%"}',
   image:
@@ -76,7 +110,9 @@ const emptyForm = {
 export default function AdminPage() {
   const router = useRouter();
   const [data, setData] = useState<Dashboard | null>(null);
-  const [tab, setTab] = useState<"inventory" | "sales" | "form">("inventory");
+  const [tab, setTab] = useState<
+    "inventory" | "sales" | "form" | "policies" | "alerts"
+  >("inventory");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState("");
@@ -86,6 +122,8 @@ export default function AdminPage() {
   const [csvResult, setCsvResult] = useState<string>("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const openedEdit = useRef(false);
+  const openedVista = useRef(false);
 
   async function load() {
     const res = await fetch("/api/admin/dashboard");
@@ -108,6 +146,24 @@ export default function AdminPage() {
     setSelectedIds((prev) => prev.filter((id) => ids.has(id)));
   }, [data]);
 
+  useEffect(() => {
+    if (openedVista.current) return;
+    const vista = new URLSearchParams(window.location.search).get("vista");
+    if (vista !== "alertas") return;
+    openedVista.current = true;
+    setTab("alerts");
+  }, []);
+
+  useEffect(() => {
+    if (!data || openedEdit.current) return;
+    const id = new URLSearchParams(window.location.search).get("editar");
+    if (!id) return;
+    const product = data.products.find((p) => p.id === id);
+    if (!product) return;
+    openedEdit.current = true;
+    startEdit(product);
+  }, [data]);
+
   function startEdit(p: Product) {
     setEditingId(p.id);
     setForm({
@@ -119,7 +175,6 @@ export default function AdminPage() {
       sku: p.sku,
       supplier: p.supplier,
       packageSize: p.packageSize,
-      dogSize: p.dogSize,
       ingredients: p.ingredients,
       nutrition: p.nutrition,
       image: p.image,
@@ -158,7 +213,7 @@ export default function AdminPage() {
     );
     const json = await res.json();
     if (!res.ok) {
-      setError(json.error || "Error al guardar");
+      setError(formatSaveError(json));
       return;
     }
     setMsg(editingId ? "Producto actualizado" : "Producto creado");
@@ -327,24 +382,31 @@ export default function AdminPage() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-4xl font-semibold">
-            Administración
+            {tab === "form"
+              ? editingId
+                ? "Editar producto"
+                : "Nuevo producto"
+              : "Administración"}
           </h1>
           <p className="mt-2 text-ink-muted">
-            Inventario, alertas de stock e historial de ventas.
+            {tab === "form"
+              ? "Completa los datos del producto. Cancelar vuelve al inventario."
+              : "Inventario, alertas de stock e historial de ventas."}
           </p>
         </div>
-        <button className="btn-primary" onClick={startCreate}>
-          Nuevo producto
-        </button>
+        {tab !== "form" && (
+          <button className="btn-primary" onClick={startCreate}>
+            Nuevo producto
+          </button>
+        )}
       </div>
 
+      {tab !== "form" && (
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {[
           ["Productos activos", data.stats.productCount],
           ["Inactivos", data.stats.inactiveCount ?? 0],
           ["Pedidos", data.stats.orderCount],
-          ["Ingresos", formatPrice(data.stats.revenue)],
-          ["Alertas stock", data.stats.lowStockCount],
         ].map(([label, value]) => (
           <div
             key={String(label)}
@@ -356,35 +418,71 @@ export default function AdminPage() {
             <p className="mt-2 font-display text-3xl">{value}</p>
           </div>
         ))}
+        <button
+          type="button"
+          onClick={() => setTab("sales")}
+          className={`border px-4 py-5 text-left transition ${
+            tab === "sales"
+              ? "border-sage/35 bg-sage/10"
+              : "border-ink/10 bg-white/60 hover:border-sage/30 hover:bg-sage/5"
+          }`}
+        >
+          <p
+            className={`text-xs uppercase tracking-[0.14em] ${
+              tab === "sales" ? "text-sage" : "text-ink-muted"
+            }`}
+          >
+            Ingresos
+          </p>
+          <p
+            className={`mt-2 font-display text-3xl ${
+              tab === "sales" ? "text-sage" : ""
+            }`}
+          >
+            {formatPrice(data.stats.revenue)}
+          </p>
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("alerts")}
+          className={`border px-4 py-5 text-left transition ${
+            tab === "alerts"
+              ? "border-berry/40 bg-berry/10"
+              : data.stats.lowStockCount > 0
+                ? "border-berry/25 bg-berry/5 hover:border-berry/40 hover:bg-berry/10"
+                : "border-ink/10 bg-white/60 hover:border-berry/30 hover:bg-berry/5"
+          }`}
+        >
+          <p
+            className={`text-xs uppercase tracking-[0.14em] ${
+              tab === "alerts" || data.stats.lowStockCount > 0
+                ? "text-berry"
+                : "text-ink-muted"
+            }`}
+          >
+            Alertas stock
+          </p>
+          <p
+            className={`mt-2 font-display text-3xl ${
+              tab === "alerts" || data.stats.lowStockCount > 0
+                ? "text-berry"
+                : ""
+            }`}
+          >
+            {data.stats.lowStockCount}
+          </p>
+        </button>
       </div>
-
-      {data.lowStockAlerts.length > 0 && (
-        <div className="border border-berry/30 bg-berry/5 p-4">
-          <h2 className="font-display text-xl text-berry">
-            Alertas de stock bajo
-          </h2>
-          <ul className="mt-3 space-y-2 text-sm">
-            {data.lowStockAlerts.map((p) => (
-              <li key={p.id} className="flex justify-between gap-3">
-                <span>
-                  {p.name}{" "}
-                  <span className="text-ink-muted">({p.sku})</span>
-                </span>
-                <span className="font-medium text-berry">
-                  {p.stock <= 0 ? "Agotado" : `${p.stock} uds`}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
       )}
 
+      {tab !== "form" && (
       <div className="flex gap-2 border-b border-ink/10">
         {(
           [
             ["inventory", "Inventario"],
             ["sales", "Ventas"],
-            ["form", editingId ? "Editar" : "Formulario"],
+            ["alerts", "Alertas"],
+            ["policies", "Políticas"],
           ] as const
         ).map(([key, label]) => (
           <button
@@ -400,6 +498,7 @@ export default function AdminPage() {
           </button>
         ))}
       </div>
+      )}
 
       {msg && (
         <p className="rounded-sm border border-sage/30 bg-sage/10 px-3 py-2 text-sm text-sage">
@@ -598,50 +697,80 @@ export default function AdminPage() {
         </div>
       )}
 
-      {tab === "sales" && (
-        <ul className="space-y-4">
-          {data.orders.length === 0 && (
-            <p className="text-ink-muted">Aún no hay ventas.</p>
-          )}
-          {data.orders.map((o) => (
-            <li
-              key={o.id}
-              className="border border-ink/10 bg-white/50 p-4"
-            >
-              <div className="flex flex-wrap justify-between gap-2">
-                <div>
-                  <p className="font-medium">{o.trackingNumber}</p>
-                  <p className="text-xs text-ink-muted">
-                    {format(new Date(o.createdAt), "d MMM yyyy HH:mm", {
-                      locale: es,
-                    })}{" "}
-                    · {o.status}
-                  </p>
-                  <p className="mt-1 text-sm">
-                    {o.user?.name || o.billingName} ·{" "}
-                    {o.user?.email || o.billingEmail}
-                  </p>
-                </div>
-                <p className="font-display text-xl">
-                  {formatPrice(o.total)}
-                </p>
+      {tab === "sales" && <AdminSales products={data.products} />}
+
+      {tab === "alerts" && (
+        <div className="space-y-6">
+          {data.lowStockAlerts.length === 0 ? (
+            <p className="text-ink-muted">No hay productos con stock bajo.</p>
+          ) : (
+            <div className="overflow-hidden rounded-sm border border-ink/10 bg-white/70">
+              <div className="border-b border-ink/10 bg-ink/[0.03] px-3 py-2">
+                <h2 className="font-display text-xl">Alertas de stock</h2>
               </div>
-              <p className="mt-2 text-sm text-ink-muted">
-                {o.items
-                  .map((i) => `${i.name} ×${i.quantity}`)
-                  .join(" · ")}
-              </p>
-            </li>
-          ))}
-        </ul>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-ink/10 text-xs uppercase tracking-[0.12em] text-ink-muted">
+                      <th className="px-3 py-2 font-medium">Producto</th>
+                      <th className="px-3 py-2 font-medium">SKU</th>
+                      <th className="px-3 py-2 font-medium">Categoría</th>
+                      <th className="px-3 py-2 font-medium text-right">Stock</th>
+                      <th className="px-3 py-2 font-medium text-right">
+                        Alerta en
+                      </th>
+                      <th className="px-3 py-2 font-medium text-right">
+                        Estado
+                      </th>
+                      <th className="px-3 py-2 font-medium text-right"> </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.lowStockAlerts.map((p) => (
+                      <tr key={p.id} className="border-b border-ink/5">
+                        <td className="px-3 py-3 font-medium">{p.name}</td>
+                        <td className="px-3 py-3 font-mono text-xs text-ink-muted">
+                          {p.sku}
+                        </td>
+                        <td className="px-3 py-3 text-ink-muted">
+                          {categoryLabel(p.category)}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums">
+                          {p.stock}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums text-ink-muted">
+                          {p.lowStockAt}
+                        </td>
+                        <td className="px-3 py-3 text-right font-medium text-berry">
+                          {p.stock <= 0 ? "Agotado" : `${p.stock} uds`}
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          <button
+                            type="button"
+                            className="text-xs font-medium text-berry hover:underline"
+                            onClick={() => startEdit(p)}
+                          >
+                            Editar
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
       )}
+
+      {tab === "policies" && <AdminPolicies />}
 
       {tab === "form" && (
         <form
           onSubmit={saveProduct}
-          className="grid max-w-3xl gap-4 sm:grid-cols-2"
+          className="grid w-full gap-4 sm:grid-cols-2 lg:grid-cols-3"
         >
-          <div className="sm:col-span-2">
+          <div className="sm:col-span-2 lg:col-span-3">
             <label className="label">Nombre</label>
             <input
               className="field"
@@ -650,7 +779,7 @@ export default function AdminPage() {
               onChange={(e) => setForm({ ...form, name: e.target.value })}
             />
           </div>
-          <div className="sm:col-span-2">
+          <div className="sm:col-span-2 lg:col-span-3">
             <label className="label">Descripción</label>
             <textarea
               className="field min-h-[90px]"
@@ -724,20 +853,6 @@ export default function AdminPage() {
             </select>
           </div>
           <div>
-            <label className="label">Tamaño de perro</label>
-            <select
-              className="field"
-              value={form.dogSize}
-              onChange={(e) => setForm({ ...form, dogSize: e.target.value })}
-            >
-              {DOG_SIZES.map((d) => (
-                <option key={d.value} value={d.value}>
-                  {d.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
             <label className="label">Empaque</label>
             <input
               className="field"
@@ -759,7 +874,7 @@ export default function AdminPage() {
               }
             />
           </div>
-          <div className="sm:col-span-2">
+          <div className="sm:col-span-2 lg:col-span-3">
             <label className="label">Ingredientes</label>
             <input
               className="field"
@@ -770,7 +885,7 @@ export default function AdminPage() {
               }
             />
           </div>
-          <div className="sm:col-span-2">
+          <div className="sm:col-span-2 lg:col-span-3">
             <label className="label">Nutrición (JSON)</label>
             <textarea
               className="field min-h-[70px] font-mono text-xs"
@@ -781,7 +896,7 @@ export default function AdminPage() {
               }
             />
           </div>
-          <div className="sm:col-span-2">
+          <div className="sm:col-span-2 lg:col-span-3">
             <label className="label">URL de imagen</label>
             <input
               className="field"
@@ -790,7 +905,7 @@ export default function AdminPage() {
               onChange={(e) => setForm({ ...form, image: e.target.value })}
             />
           </div>
-          <div className="sm:col-span-2 flex gap-3">
+          <div className="sm:col-span-2 lg:col-span-3 flex gap-3">
             <button type="submit" className="btn-primary">
               {editingId ? "Actualizar" : "Crear producto"}
             </button>

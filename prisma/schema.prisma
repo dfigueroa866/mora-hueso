@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client-v2"
 }
 
 datasource db {
@@ -17,7 +18,6 @@ model Product {
   sku         String      @unique
   supplier    String
   packageSize String
-  dogSize     String
   ingredients String
   nutrition   String
   image       String
@@ -26,6 +26,7 @@ model Product {
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
   orderItems  OrderItem[]
+  reviews     Review[]
 }
 
 model User {
@@ -41,6 +42,30 @@ model User {
   updatedAt    DateTime  @updatedAt
   addresses    Address[]
   orders       Order[]
+  reviews      Review[]
+}
+
+model Review {
+  id        String        @id @default(cuid())
+  productId String
+  product   Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating    Int
+  title     String        @default("")
+  comment   String
+  createdAt DateTime      @default(now())
+  photos    ReviewPhoto[]
+
+  @@index([productId])
+  @@index([userId])
+}
+
+model ReviewPhoto {
+  id       String @id @default(cuid())
+  reviewId String
+  review   Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  url      String
 }
 
 model Address {
@@ -58,28 +83,33 @@ model Address {
 }
 
 model Order {
-  id             String      @id @default(cuid())
-  userId         String?
-  user           User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
-  guestEmail     String?
-  status         String      @default("confirmed")
-  subtotal       Float
-  tax            Float
-  shippingCost   Float
-  total          Float
-  shippingMethod String
-  trackingNumber String
-  shipStreet     String
-  shipCity       String
-  shipState      String  @default("")
-  shipPostalCode String
-  shipCountry    String
-  shipReferences String?
-  billingName    String
-  billingEmail   String
-  cardLast4      String?
-  createdAt      DateTime    @default(now())
-  items          OrderItem[]
+  id              String      @id @default(cuid())
+  userId          String?
+  user            User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  guestEmail      String?
+  status          String      @default("pending_payment")
+  subtotal        Float
+  discount        Float       @default(0)
+  tax             Float
+  shippingCost    Float
+  total           Float
+  shippingMethod  String
+  trackingNumber  String
+  shipStreet      String
+  shipCity        String
+  shipState       String      @default("")
+  shipPostalCode  String
+  shipCountry     String
+  shipReferences  String?
+  billingName     String
+  billingEmail    String
+  cardLast4       String?
+  paymentProvider String      @default("mercadopago")
+  mpPreferenceId  String?
+  mpPaymentId     String?
+  paidAt          DateTime?
+  createdAt       DateTime    @default(now())
+  items           OrderItem[]
 }
 
 model OrderItem {
@@ -92,4 +122,13 @@ model OrderItem {
   sku       String
   quantity  Int
   price     Float
+}
+
+model LegalDocument {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  title     String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
