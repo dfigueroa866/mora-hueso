@@ -110,9 +110,9 @@ const emptyForm = {
 export default function AdminPage() {
   const router = useRouter();
   const [data, setData] = useState<Dashboard | null>(null);
-  const [tab, setTab] = useState<"inventory" | "sales" | "form" | "policies">(
-    "inventory"
-  );
+  const [tab, setTab] = useState<
+    "inventory" | "sales" | "form" | "policies" | "alerts"
+  >("inventory");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState("");
@@ -123,6 +123,7 @@ export default function AdminPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const openedEdit = useRef(false);
+  const openedVista = useRef(false);
 
   async function load() {
     const res = await fetch("/api/admin/dashboard");
@@ -144,6 +145,14 @@ export default function AdminPage() {
     const ids = new Set(data.products.map((p) => p.id));
     setSelectedIds((prev) => prev.filter((id) => ids.has(id)));
   }, [data]);
+
+  useEffect(() => {
+    if (openedVista.current) return;
+    const vista = new URLSearchParams(window.location.search).get("vista");
+    if (vista !== "alertas") return;
+    openedVista.current = true;
+    setTab("alerts");
+  }, []);
 
   useEffect(() => {
     if (!data || openedEdit.current) return;
@@ -433,29 +442,36 @@ export default function AdminPage() {
             {formatPrice(data.stats.revenue)}
           </p>
         </button>
-        <Link
-          href="/admin/alertas"
-          className={
-            data.stats.lowStockCount > 0
-              ? "border border-berry/40 bg-berry/10 px-4 py-5 transition hover:border-berry hover:bg-berry/15"
-              : "border border-ink/10 bg-white/60 px-4 py-5 transition hover:border-ink/25"
-          }
+        <button
+          type="button"
+          onClick={() => setTab("alerts")}
+          className={`border px-4 py-5 text-left transition ${
+            tab === "alerts"
+              ? "border-berry/40 bg-berry/10"
+              : data.stats.lowStockCount > 0
+                ? "border-berry/25 bg-berry/5 hover:border-berry/40 hover:bg-berry/10"
+                : "border-ink/10 bg-white/60 hover:border-berry/30 hover:bg-berry/5"
+          }`}
         >
           <p
             className={`text-xs uppercase tracking-[0.14em] ${
-              data.stats.lowStockCount > 0 ? "text-berry" : "text-ink-muted"
+              tab === "alerts" || data.stats.lowStockCount > 0
+                ? "text-berry"
+                : "text-ink-muted"
             }`}
           >
             Alertas stock
           </p>
           <p
             className={`mt-2 font-display text-3xl ${
-              data.stats.lowStockCount > 0 ? "text-berry" : ""
+              tab === "alerts" || data.stats.lowStockCount > 0
+                ? "text-berry"
+                : ""
             }`}
           >
             {data.stats.lowStockCount}
           </p>
-        </Link>
+        </button>
       </div>
       )}
 
@@ -465,6 +481,7 @@ export default function AdminPage() {
           [
             ["inventory", "Inventario"],
             ["sales", "Ventas"],
+            ["alerts", "Alertas"],
             ["policies", "Políticas"],
           ] as const
         ).map(([key, label]) => (
@@ -681,6 +698,70 @@ export default function AdminPage() {
       )}
 
       {tab === "sales" && <AdminSales products={data.products} />}
+
+      {tab === "alerts" && (
+        <div className="space-y-6">
+          {data.lowStockAlerts.length === 0 ? (
+            <p className="text-ink-muted">No hay productos con stock bajo.</p>
+          ) : (
+            <div className="overflow-hidden rounded-sm border border-ink/10 bg-white/70">
+              <div className="border-b border-ink/10 bg-ink/[0.03] px-3 py-2">
+                <h2 className="font-display text-xl">Alertas de stock</h2>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-ink/10 text-xs uppercase tracking-[0.12em] text-ink-muted">
+                      <th className="px-3 py-2 font-medium">Producto</th>
+                      <th className="px-3 py-2 font-medium">SKU</th>
+                      <th className="px-3 py-2 font-medium">Categoría</th>
+                      <th className="px-3 py-2 font-medium text-right">Stock</th>
+                      <th className="px-3 py-2 font-medium text-right">
+                        Alerta en
+                      </th>
+                      <th className="px-3 py-2 font-medium text-right">
+                        Estado
+                      </th>
+                      <th className="px-3 py-2 font-medium text-right"> </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.lowStockAlerts.map((p) => (
+                      <tr key={p.id} className="border-b border-ink/5">
+                        <td className="px-3 py-3 font-medium">{p.name}</td>
+                        <td className="px-3 py-3 font-mono text-xs text-ink-muted">
+                          {p.sku}
+                        </td>
+                        <td className="px-3 py-3 text-ink-muted">
+                          {categoryLabel(p.category)}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums">
+                          {p.stock}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums text-ink-muted">
+                          {p.lowStockAt}
+                        </td>
+                        <td className="px-3 py-3 text-right font-medium text-berry">
+                          {p.stock <= 0 ? "Agotado" : `${p.stock} uds`}
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          <button
+                            type="button"
+                            className="text-xs font-medium text-berry hover:underline"
+                            onClick={() => startEdit(p)}
+                          >
+                            Editar
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {tab === "policies" && <AdminPolicies />}
 
