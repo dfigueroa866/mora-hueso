@@ -22,6 +22,7 @@ export async function GET(
       statusLabel: orderStatusLabel(order.status),
       total: order.total,
       subtotal: order.subtotal,
+      discount: order.discount,
       tax: order.tax,
       shippingCost: order.shippingCost,
       shippingMethod: order.shippingMethod,

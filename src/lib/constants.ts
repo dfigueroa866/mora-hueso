@@ -29,6 +29,9 @@ export const SHIPPING_METHODS = [
 
 export const TAX_RATE = Number(process.env.NEXT_PUBLIC_TAX_RATE || "0.16");
 
+/** Descuento de primera compra (sobre subtotal de productos). */
+export const FIRST_PURCHASE_DISCOUNT_RATE = 0.1;
+
 export const SOCIAL_LINKS = [
   {
     name: "Facebook",

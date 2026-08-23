@@ -89,6 +89,7 @@ model Order {
   guestEmail      String?
   status          String      @default("pending_payment")
   subtotal        Float
+  discount        Float       @default(0)
   tax             Float
   shippingCost    Float
   total           Float

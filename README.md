@@ -47,4 +47,5 @@ Sin token, el flujo abre la página demo para aprobar/rechazar el pago.
 - Carga masiva de inventario por CSV
 - Registro, login, recuperación de contraseña, perfil
 - Carrito, envío, checkout con Mercado Pago
+- Promo de bienvenida: 10% en la primera compra (por correo)
 - Reseñas con fotos (clientes) y paginación

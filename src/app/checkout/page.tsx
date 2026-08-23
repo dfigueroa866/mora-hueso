@@ -1,12 +1,13 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useCart } from "@/lib/cart-store";
 import {
   SHIPPING_METHODS,
   formatPrice,
   TAX_RATE,
+  FIRST_PURCHASE_DISCOUNT_RATE,
   roundMoney,
 } from "@/lib/constants";
 
@@ -26,6 +27,8 @@ export default function CheckoutPage() {
   const [shipping, setShipping] = useState<ShippingData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [firstPurchase, setFirstPurchase] = useState(false);
+  const [checkingEmail, setCheckingEmail] = useState(false);
   const [form, setForm] = useState({
     billingName: "",
     billingEmail: "",
@@ -49,6 +52,50 @@ export default function CheckoutPage() {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    const email = form.billingEmail.trim();
+    if (!email.includes("@")) {
+      setFirstPurchase(false);
+      return;
+    }
+    const ctrl = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setCheckingEmail(true);
+      try {
+        const res = await fetch(
+          `/api/orders/first-purchase?email=${encodeURIComponent(email)}`,
+          { signal: ctrl.signal }
+        );
+        const data = await res.json();
+        if (res.ok) setFirstPurchase(Boolean(data.eligible));
+        else setFirstPurchase(false);
+      } catch {
+        if (!ctrl.signal.aborted) setFirstPurchase(false);
+      } finally {
+        if (!ctrl.signal.aborted) setCheckingEmail(false);
+      }
+    }, 350);
+    return () => {
+      ctrl.abort();
+      window.clearTimeout(timer);
+    };
+  }, [form.billingEmail]);
+
+  const method = shipping
+    ? SHIPPING_METHODS.find((m) => m.value === shipping.shippingMethod)!
+    : null;
+  const sub = subtotal();
+  const discount = useMemo(
+    () =>
+      firstPurchase
+        ? roundMoney(sub * FIRST_PURCHASE_DISCOUNT_RATE)
+        : 0,
+    [firstPurchase, sub]
+  );
+  const taxable = roundMoney(Math.max(0, sub - discount));
+  const tax = roundMoney(taxable * TAX_RATE);
+  const total = method ? roundMoney(taxable + tax + method.cost) : 0;
+
   if (!mounted) {
     return <div className="section-pad text-ink-muted">Cargando…</div>;
   }
@@ -65,7 +112,7 @@ export default function CheckoutPage() {
     );
   }
 
-  if (!shipping) {
+  if (!shipping || !method) {
     return (
       <div className="section-pad text-center">
         <h1 className="font-display text-4xl">Checkout</h1>
@@ -78,13 +125,6 @@ export default function CheckoutPage() {
       </div>
     );
   }
-
-  const method = SHIPPING_METHODS.find(
-    (m) => m.value === shipping.shippingMethod
-  )!;
-  const sub = subtotal();
-  const tax = roundMoney(sub * TAX_RATE);
-  const total = roundMoney(sub + tax + method.cost);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -130,6 +170,8 @@ export default function CheckoutPage() {
     }
   }
 
+  const percent = Math.round(FIRST_PURCHASE_DISCOUNT_RATE * 100);
+
   return (
     <div className="section-pad">
       <h1 className="font-display text-4xl font-semibold">Pago</h1>
@@ -170,6 +212,25 @@ export default function CheckoutPage() {
                 setForm({ ...form, billingEmail: e.target.value })
               }
             />
+            {checkingEmail && (
+              <p className="mt-1.5 text-xs text-ink-muted">
+                Verificando descuento de primera compra…
+              </p>
+            )}
+            {!checkingEmail && firstPurchase && form.billingEmail.includes("@") && (
+              <p className="mt-1.5 text-xs text-sage">
+                ¡Listo! Este correo aplica {percent}% de descuento en su primera
+                compra.
+              </p>
+            )}
+            {!checkingEmail &&
+              !firstPurchase &&
+              form.billingEmail.includes("@") && (
+                <p className="mt-1.5 text-xs text-ink-muted">
+                  Este correo ya tiene una compra previa; el descuento de
+                  primera compra no aplica.
+                </p>
+              )}
           </div>
 
           <div className="border border-ink/10 bg-white/50 p-4 text-sm text-ink-muted">
@@ -193,7 +254,9 @@ export default function CheckoutPage() {
 
           {error && <p className="text-sm text-berry">{error}</p>}
           <button type="submit" className="btn-primary" disabled={loading}>
-            {loading ? "Redirigiendo…" : `Pagar ${formatPrice(total)} con Mercado Pago`}
+            {loading
+              ? "Redirigiendo…"
+              : `Pagar ${formatPrice(total)} con Mercado Pago`}
           </button>
         </div>
 
@@ -214,6 +277,12 @@ export default function CheckoutPage() {
               <dt className="text-ink-muted">Subtotal</dt>
               <dd>{formatPrice(sub)}</dd>
             </div>
+            {discount > 0 && (
+              <div className="flex justify-between text-sage">
+                <dt>Descuento primera compra ({percent}%)</dt>
+                <dd>−{formatPrice(discount)}</dd>
+              </div>
+            )}
             <div className="flex justify-between">
               <dt className="text-ink-muted">IVA ({TAX_RATE * 100}%)</dt>
               <dd>{formatPrice(tax)}</dd>

@@ -3,7 +3,6 @@ import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import {
   SHIPPING_METHODS,
-  TAX_RATE,
   generateTrackingNumber,
   roundMoney,
 } from "@/lib/constants";
@@ -14,6 +13,43 @@ import {
   getAppBaseUrl,
   hasMercadoPagoToken,
 } from "@/lib/mercadopago";
+import {
+  calcOrderTotals,
+  isFirstPurchaseEmail,
+  normalizeEmail,
+} from "@/lib/first-purchase";
+
+function orderPayload(
+  order: {
+    id: string;
+    trackingNumber: string;
+    total: number;
+    subtotal: number;
+    discount: number;
+    tax: number;
+    shippingCost: number;
+    shippingMethod: string;
+    status: string;
+    items: unknown;
+  },
+  email: string,
+  firstPurchase: boolean
+) {
+  return {
+    id: order.id,
+    trackingNumber: order.trackingNumber,
+    total: order.total,
+    subtotal: order.subtotal,
+    discount: order.discount,
+    tax: order.tax,
+    shippingCost: order.shippingCost,
+    shippingMethod: order.shippingMethod,
+    status: order.status,
+    items: order.items,
+    emailSentTo: email,
+    firstPurchaseDiscount: firstPurchase,
+  };
+}
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -28,6 +64,7 @@ export async function POST(req: NextRequest) {
   const data = parsed.data;
   const session = await getSession();
   const baseUrl = getAppBaseUrl(req.url);
+  const billingEmail = normalizeEmail(data.billingEmail);
 
   const productIds = data.items.map((i) => i.productId);
   const products = await prisma.product.findMany({
@@ -71,10 +108,14 @@ export async function POST(req: NextRequest) {
   const subtotal = roundMoney(
     lineItems.reduce((s, i) => s + i.price * i.quantity, 0)
   );
-  const tax = roundMoney(subtotal * TAX_RATE);
   const shipping = SHIPPING_METHODS.find((m) => m.value === data.shippingMethod)!;
   const shippingCost = shipping.cost;
-  const total = roundMoney(subtotal + tax + shippingCost);
+  const firstPurchase = await isFirstPurchaseEmail(billingEmail);
+  const { discount, tax, total } = calcOrderTotals({
+    subtotal,
+    shippingCost,
+    applyFirstPurchaseDiscount: firstPurchase,
+  });
   const trackingNumber = generateTrackingNumber();
 
   try {
@@ -92,9 +133,10 @@ export async function POST(req: NextRequest) {
       return tx.order.create({
         data: {
           userId: session?.id,
-          guestEmail: session ? null : data.billingEmail,
+          guestEmail: session ? null : billingEmail,
           status: "pending_payment",
           subtotal,
+          discount,
           tax,
           shippingCost,
           total,
@@ -107,7 +149,7 @@ export async function POST(req: NextRequest) {
           shipCountry: data.shipCountry,
           shipReferences: data.shipReferences || null,
           billingName: data.billingName,
-          billingEmail: data.billingEmail,
+          billingEmail,
           paymentProvider: hasMercadoPagoToken() ? "mercadopago" : "demo",
           items: {
             create: lineItems.map((i) => ({
@@ -123,29 +165,52 @@ export async function POST(req: NextRequest) {
       });
     });
 
-    // Real Mercado Pago Checkout Pro
+    // MP no acepta unit_price negativo: el descuento se prorratea en productos.
+    const merchandiseNet = Math.max(0, roundMoney(subtotal - discount));
+    const productMpItems =
+      discount > 0 && subtotal > 0
+        ? (() => {
+            let remaining = merchandiseNet;
+            return lineItems.map((item, index) => {
+              const lineTotal = roundMoney(item.price * item.quantity);
+              const share =
+                index === lineItems.length - 1
+                  ? remaining
+                  : roundMoney((lineTotal / subtotal) * merchandiseNet);
+              if (index < lineItems.length - 1) {
+                remaining = roundMoney(remaining - share);
+              }
+              return {
+                title: item.name,
+                quantity: 1,
+                unitPrice: share,
+              };
+            });
+          })()
+        : lineItems.map((i) => ({
+            title: i.name,
+            quantity: i.quantity,
+            unitPrice: i.price,
+          }));
+
+    const mpItems = [
+      ...productMpItems,
+      ...(tax > 0 ? [{ title: "IVA", quantity: 1, unitPrice: tax }] : []),
+      {
+        title: `Envío ${shipping.label}`,
+        quantity: 1,
+        unitPrice: shippingCost,
+      },
+    ];
+
     if (hasMercadoPagoToken()) {
       try {
         const pref = await createCheckoutPreference({
           orderId: order.id,
           trackingNumber: order.trackingNumber,
           total: order.total,
-          items: [
-            ...lineItems.map((i) => ({
-              title: i.name,
-              quantity: i.quantity,
-              unitPrice: i.price,
-            })),
-            ...(tax > 0
-              ? [{ title: "IVA", quantity: 1, unitPrice: tax }]
-              : []),
-            {
-              title: `Envío ${shipping.label}`,
-              quantity: 1,
-              unitPrice: shippingCost,
-            },
-          ],
-          payerEmail: data.billingEmail,
+          items: mpItems,
+          payerEmail: billingEmail,
           payerName: data.billingName,
           baseUrl,
         });
@@ -158,18 +223,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
           checkoutUrl: pref.initPoint,
           provider: "mercadopago",
-          order: {
-            id: order.id,
-            trackingNumber: order.trackingNumber,
-            total: order.total,
-            subtotal: order.subtotal,
-            tax: order.tax,
-            shippingCost: order.shippingCost,
-            shippingMethod: order.shippingMethod,
-            status: order.status,
-            items: order.items,
-            emailSentTo: data.billingEmail,
-          },
+          order: orderPayload(order, billingEmail, firstPurchase),
         });
       } catch (err) {
         console.error("Mercado Pago preference error", err);
@@ -183,24 +237,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Demo local without credentials
     if (allowDemoPayments()) {
       const demoUrl = `${baseUrl}/pago/demo?t=${order.trackingNumber}&orderId=${order.id}`;
       return NextResponse.json({
         checkoutUrl: demoUrl,
         provider: "demo",
-        order: {
-          id: order.id,
-          trackingNumber: order.trackingNumber,
-          total: order.total,
-          subtotal: order.subtotal,
-          tax: order.tax,
-          shippingCost: order.shippingCost,
-          shippingMethod: order.shippingMethod,
-          status: order.status,
-          items: order.items,
-          emailSentTo: data.billingEmail,
-        },
+        order: orderPayload(order, billingEmail, firstPurchase),
       });
     }
 

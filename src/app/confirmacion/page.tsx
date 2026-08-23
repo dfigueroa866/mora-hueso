@@ -12,10 +12,12 @@ type OrderView = {
   statusLabel?: string;
   total: number;
   subtotal: number;
+  discount?: number;
   tax: number;
   shippingCost: number;
   billingEmail?: string;
   emailSentTo?: string;
+  firstPurchaseDiscount?: boolean;
   items: { name: string; quantity: number; price: number }[];
 };
 
@@ -188,6 +190,12 @@ function ConfirmationInner() {
               <dt>Subtotal</dt>
               <dd>{formatPrice(order.subtotal)}</dd>
             </div>
+            {(order.discount ?? 0) > 0 && (
+              <div className="flex justify-between text-sage">
+                <dt>Descuento primera compra (10%)</dt>
+                <dd>−{formatPrice(order.discount!)}</dd>
+              </div>
+            )}
             <div className="flex justify-between">
               <dt>IVA</dt>
               <dd>{formatPrice(order.tax)}</dd>
