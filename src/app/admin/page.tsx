@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -53,6 +53,43 @@ type Dashboard = {
   };
 };
 
+const FIELD_LABELS: Record<string, string> = {
+  name: "Nombre",
+  description: "Descripción",
+  price: "Precio",
+  category: "Categoría",
+  stock: "Stock",
+  sku: "SKU",
+  supplier: "Proveedor",
+  packageSize: "Empaque",
+  ingredients: "Ingredientes",
+  nutrition: "Nutrición",
+  image: "Imagen",
+  lowStockAt: "Alerta de stock",
+  active: "Estado",
+};
+
+function formatSaveError(json: {
+  error?: string;
+  details?: {
+    fieldErrors?: Record<string, string[] | undefined>;
+    formErrors?: string[];
+  };
+}) {
+  const parts: string[] = [];
+  const fieldErrors = json.details?.fieldErrors || {};
+  for (const [key, messages] of Object.entries(fieldErrors)) {
+    if (!messages?.length) continue;
+    const label = FIELD_LABELS[key] || key;
+    parts.push(`${label}: ${messages.join(" ")}`);
+  }
+  if (json.details?.formErrors?.length) {
+    parts.push(...json.details.formErrors);
+  }
+  if (parts.length) return parts.join(" · ");
+  return json.error || "Error al guardar";
+}
+
 const emptyForm = {
   name: "",
   description: "",
@@ -85,6 +122,7 @@ export default function AdminPage() {
   const [csvResult, setCsvResult] = useState<string>("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const openedEdit = useRef(false);
 
   async function load() {
     const res = await fetch("/api/admin/dashboard");
@@ -105,6 +143,16 @@ export default function AdminPage() {
     if (!data) return;
     const ids = new Set(data.products.map((p) => p.id));
     setSelectedIds((prev) => prev.filter((id) => ids.has(id)));
+  }, [data]);
+
+  useEffect(() => {
+    if (!data || openedEdit.current) return;
+    const id = new URLSearchParams(window.location.search).get("editar");
+    if (!id) return;
+    const product = data.products.find((p) => p.id === id);
+    if (!product) return;
+    openedEdit.current = true;
+    startEdit(product);
   }, [data]);
 
   function startEdit(p: Product) {
@@ -156,7 +204,7 @@ export default function AdminPage() {
     );
     const json = await res.json();
     if (!res.ok) {
-      setError(json.error || "Error al guardar");
+      setError(formatSaveError(json));
       return;
     }
     setMsg(editingId ? "Producto actualizado" : "Producto creado");
@@ -325,24 +373,31 @@ export default function AdminPage() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-4xl font-semibold">
-            Administración
+            {tab === "form"
+              ? editingId
+                ? "Editar producto"
+                : "Nuevo producto"
+              : "Administración"}
           </h1>
           <p className="mt-2 text-ink-muted">
-            Inventario, alertas de stock e historial de ventas.
+            {tab === "form"
+              ? "Completa los datos del producto. Cancelar vuelve al inventario."
+              : "Inventario, alertas de stock e historial de ventas."}
           </p>
         </div>
-        <button className="btn-primary" onClick={startCreate}>
-          Nuevo producto
-        </button>
+        {tab !== "form" && (
+          <button className="btn-primary" onClick={startCreate}>
+            Nuevo producto
+          </button>
+        )}
       </div>
 
+      {tab !== "form" && (
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {[
           ["Productos activos", data.stats.productCount],
           ["Inactivos", data.stats.inactiveCount ?? 0],
           ["Pedidos", data.stats.orderCount],
-          ["Ingresos", formatPrice(data.stats.revenue)],
-          ["Alertas stock", data.stats.lowStockCount],
         ].map(([label, value]) => (
           <div
             key={String(label)}
@@ -354,36 +409,63 @@ export default function AdminPage() {
             <p className="mt-2 font-display text-3xl">{value}</p>
           </div>
         ))}
+        <button
+          type="button"
+          onClick={() => setTab("sales")}
+          className={`border px-4 py-5 text-left transition ${
+            tab === "sales"
+              ? "border-sage/35 bg-sage/10"
+              : "border-ink/10 bg-white/60 hover:border-sage/30 hover:bg-sage/5"
+          }`}
+        >
+          <p
+            className={`text-xs uppercase tracking-[0.14em] ${
+              tab === "sales" ? "text-sage" : "text-ink-muted"
+            }`}
+          >
+            Ingresos
+          </p>
+          <p
+            className={`mt-2 font-display text-3xl ${
+              tab === "sales" ? "text-sage" : ""
+            }`}
+          >
+            {formatPrice(data.stats.revenue)}
+          </p>
+        </button>
+        <Link
+          href="/admin/alertas"
+          className={
+            data.stats.lowStockCount > 0
+              ? "border border-berry/40 bg-berry/10 px-4 py-5 transition hover:border-berry hover:bg-berry/15"
+              : "border border-ink/10 bg-white/60 px-4 py-5 transition hover:border-ink/25"
+          }
+        >
+          <p
+            className={`text-xs uppercase tracking-[0.14em] ${
+              data.stats.lowStockCount > 0 ? "text-berry" : "text-ink-muted"
+            }`}
+          >
+            Alertas stock
+          </p>
+          <p
+            className={`mt-2 font-display text-3xl ${
+              data.stats.lowStockCount > 0 ? "text-berry" : ""
+            }`}
+          >
+            {data.stats.lowStockCount}
+          </p>
+        </Link>
       </div>
-
-      {data.lowStockAlerts.length > 0 && (
-        <div className="border border-berry/30 bg-berry/5 p-4">
-          <h2 className="font-display text-xl text-berry">
-            Alertas de stock bajo
-          </h2>
-          <ul className="mt-3 space-y-2 text-sm">
-            {data.lowStockAlerts.map((p) => (
-              <li key={p.id} className="flex justify-between gap-3">
-                <span>
-                  {p.name}{" "}
-                  <span className="text-ink-muted">({p.sku})</span>
-                </span>
-                <span className="font-medium text-berry">
-                  {p.stock <= 0 ? "Agotado" : `${p.stock} uds`}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
       )}
 
+      {tab !== "form" && (
       <div className="flex gap-2 border-b border-ink/10">
         {(
           [
             ["inventory", "Inventario"],
             ["sales", "Ventas"],
             ["policies", "Políticas"],
-            ["form", editingId ? "Editar" : "Formulario"],
           ] as const
         ).map(([key, label]) => (
           <button
@@ -399,6 +481,7 @@ export default function AdminPage() {
           </button>
         ))}
       </div>
+      )}
 
       {msg && (
         <p className="rounded-sm border border-sage/30 bg-sage/10 px-3 py-2 text-sm text-sage">
@@ -604,9 +687,9 @@ export default function AdminPage() {
       {tab === "form" && (
         <form
           onSubmit={saveProduct}
-          className="grid max-w-3xl gap-4 sm:grid-cols-2"
+          className="grid w-full gap-4 sm:grid-cols-2 lg:grid-cols-3"
         >
-          <div className="sm:col-span-2">
+          <div className="sm:col-span-2 lg:col-span-3">
             <label className="label">Nombre</label>
             <input
               className="field"
@@ -615,7 +698,7 @@ export default function AdminPage() {
               onChange={(e) => setForm({ ...form, name: e.target.value })}
             />
           </div>
-          <div className="sm:col-span-2">
+          <div className="sm:col-span-2 lg:col-span-3">
             <label className="label">Descripción</label>
             <textarea
               className="field min-h-[90px]"
@@ -710,7 +793,7 @@ export default function AdminPage() {
               }
             />
           </div>
-          <div className="sm:col-span-2">
+          <div className="sm:col-span-2 lg:col-span-3">
             <label className="label">Ingredientes</label>
             <input
               className="field"
@@ -721,7 +804,7 @@ export default function AdminPage() {
               }
             />
           </div>
-          <div className="sm:col-span-2">
+          <div className="sm:col-span-2 lg:col-span-3">
             <label className="label">Nutrición (JSON)</label>
             <textarea
               className="field min-h-[70px] font-mono text-xs"
@@ -732,7 +815,7 @@ export default function AdminPage() {
               }
             />
           </div>
-          <div className="sm:col-span-2">
+          <div className="sm:col-span-2 lg:col-span-3">
             <label className="label">URL de imagen</label>
             <input
               className="field"
@@ -741,7 +824,7 @@ export default function AdminPage() {
               onChange={(e) => setForm({ ...form, image: e.target.value })}
             />
           </div>
-          <div className="sm:col-span-2 flex gap-3">
+          <div className="sm:col-span-2 lg:col-span-3 flex gap-3">
             <button type="submit" className="btn-primary">
               {editingId ? "Actualizar" : "Crear producto"}
             </button>
