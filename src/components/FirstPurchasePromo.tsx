@@ -4,30 +4,24 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { X } from "lucide-react";
 import { FIRST_PURCHASE_DISCOUNT_RATE } from "@/lib/constants";
-
-const STORAGE_KEY = "mh_first_purchase_promo_seen";
+import {
+  hasSeenFirstPurchasePromo,
+  markFirstPurchasePromoSeen,
+} from "@/lib/first-purchase-promo";
 
 export function FirstPurchasePromo() {
   const [open, setOpen] = useState(false);
   const percent = Math.round(FIRST_PURCHASE_DISCOUNT_RATE * 100);
 
   useEffect(() => {
-    try {
-      if (sessionStorage.getItem(STORAGE_KEY) === "1") return;
-    } catch {
-      /* ignore */
-    }
+    if (hasSeenFirstPurchasePromo()) return;
     const id = window.setTimeout(() => setOpen(true), 450);
     return () => window.clearTimeout(id);
   }, []);
 
   function dismiss() {
     setOpen(false);
-    try {
-      sessionStorage.setItem(STORAGE_KEY, "1");
-    } catch {
-      /* ignore */
-    }
+    markFirstPurchasePromoSeen();
   }
 
   if (!open) return null;

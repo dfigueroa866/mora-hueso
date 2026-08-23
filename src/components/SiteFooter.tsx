@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Facebook, Instagram } from "lucide-react";
 import { SOCIAL_LINKS } from "@/lib/constants";
+import { FirstPurchaseFooter } from "@/components/FirstPurchaseFooter";
 
 function WhatsAppIcon({ className }: { className?: string }) {
   return (
@@ -130,6 +131,7 @@ export function SiteFooter() {
           </a>
         </div>
       </div>
+      <FirstPurchaseFooter />
       <div className="border-t border-bone/10 py-4 text-center text-xs text-bone/40">
         © {new Date().getFullYear()} Mora & Hueso
       </div>
