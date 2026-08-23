@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/constants";
-import { orderStatusLabel } from "@/lib/orders";
+import { orderStatusLabel } from "@/lib/order-status";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 

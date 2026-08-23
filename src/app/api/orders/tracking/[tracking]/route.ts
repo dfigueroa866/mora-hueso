@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { orderStatusLabel } from "@/lib/orders";
+import { orderStatusLabel } from "@/lib/order-status";
 
 export async function GET(
   _req: NextRequest,
