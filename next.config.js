@@ -13,6 +13,11 @@ const nextConfig = {
       { protocol: "https", hostname: "images.unsplash.com" },
     ],
   },
+  experimental: {
+    outputFileTracingIncludes: {
+      "/**": ["./node_modules/.prisma/client-v2/**"],
+    },
+  },
   webpack: (config) => {
     config.resolve.alias["@prisma-client"] = path.resolve(
       __dirname,

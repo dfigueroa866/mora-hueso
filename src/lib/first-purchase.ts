@@ -14,17 +14,16 @@ export async function isFirstPurchaseEmail(email: string) {
   const normalized = normalizeEmail(email);
   if (!normalized) return false;
 
-  // SQLite: comparación case-insensitive por correo facturación / invitado.
-  const rows = await prisma.$queryRaw<Array<{ c: bigint | number }>>`
-    SELECT COUNT(*) as c FROM "Order"
-    WHERE status IN ('paid', 'shipped', 'confirmed')
-      AND (
-        lower(billingEmail) = ${normalized}
-        OR (guestEmail IS NOT NULL AND lower(guestEmail) = ${normalized})
-      )
-  `;
+  const count = await prisma.order.count({
+    where: {
+      status: { in: ["paid", "shipped", "confirmed"] },
+      OR: [
+        { billingEmail: { equals: normalized, mode: "insensitive" } },
+        { guestEmail: { equals: normalized, mode: "insensitive" } },
+      ],
+    },
+  });
 
-  const count = Number(rows[0]?.c ?? 0);
   return count === 0;
 }
 

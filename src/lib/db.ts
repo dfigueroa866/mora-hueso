@@ -1,5 +1,12 @@
 import { PrismaClient } from "@prisma-client";
 
+const databaseUrl = process.env.DATABASE_URL ?? "";
+if (databaseUrl.startsWith("file:")) {
+  throw new Error(
+    "SQLite no funciona en Vercel. Configura DATABASE_URL con PostgreSQL (Neon)."
+  );
+}
+
 const globalForPrisma = globalThis as unknown as { prismaV2?: PrismaClient };
 
 export const prisma =
