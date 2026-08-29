@@ -130,7 +130,7 @@ export function SiteFooter() {
           </a>
         </div>
       </div>
-      <div className="border-t border-bone/10 py-4 text-center text-xs text-bone/40">
+      <div className="border-t border-bone/10 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-center text-xs text-bone/40">
         © {new Date().getFullYear()} Mora & Hueso
       </div>
     </footer>

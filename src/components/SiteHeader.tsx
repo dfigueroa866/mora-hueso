@@ -64,10 +64,10 @@ export function SiteHeader() {
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b border-ink/10 bg-bone/90 backdrop-blur-md">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-        <Link href="/" className="group flex items-baseline gap-2">
-          <span className="font-display text-2xl font-semibold tracking-tight text-ink transition group-hover:text-berry">
+    <header className="sticky top-0 z-40 border-b border-ink/10 bg-bone/90 pt-[env(safe-area-inset-top)] backdrop-blur-md">
+      <div className="mx-auto flex max-w-6xl min-w-0 items-center justify-between gap-3 px-4 py-3 sm:gap-4 sm:px-6 lg:px-8">
+        <Link href="/" className="group min-w-0">
+          <span className="block truncate font-display text-xl font-semibold tracking-tight text-ink transition group-hover:text-berry sm:text-2xl">
             Mora & Hueso
           </span>
         </Link>
@@ -92,7 +92,7 @@ export function SiteHeader() {
           )}
         </nav>
 
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {user ? (
             <button onClick={logout} className="btn-ghost hidden sm:inline-flex">
               Salir

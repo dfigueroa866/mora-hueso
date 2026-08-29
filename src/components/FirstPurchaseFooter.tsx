@@ -43,7 +43,7 @@ export function FirstPurchaseFooter() {
   return (
     <div
       ref={barRef}
-      className="fixed inset-x-0 bottom-0 z-30 overflow-hidden bg-berry shadow-[0_-12px_32px_rgba(139,58,74,0.45)]"
+      className="fixed inset-x-0 bottom-0 z-30 overflow-hidden bg-berry pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] shadow-[0_-12px_32px_rgba(139,58,74,0.45)]"
     >
       <div
         className="h-1 w-full bg-gradient-to-r from-bone via-berry-soft to-bone"

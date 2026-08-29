@@ -56,7 +56,7 @@ export function HeroCarousel() {
 
   return (
     <section
-      className="relative min-h-[88vh] overflow-hidden bg-ink text-bone"
+      className="relative min-h-[72vh] overflow-hidden bg-ink text-bone sm:min-h-[88vh]"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
     >
@@ -77,11 +77,11 @@ export function HeroCarousel() {
       <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/55 to-ink/20" />
       <div className="absolute inset-0 bg-hero-grain opacity-50 mix-blend-multiply" />
 
-      <div className="relative mx-auto flex min-h-[88vh] max-w-6xl flex-col justify-end px-4 pb-20 pt-28 sm:px-6 lg:px-8">
+      <div className="relative mx-auto flex min-h-[72vh] max-w-6xl flex-col justify-end px-4 pb-12 pt-16 sm:min-h-[88vh] sm:px-6 sm:pb-20 sm:pt-28 lg:px-8">
         <p className="animate-fade-in text-xs uppercase tracking-[0.28em] text-bone/60">
           Premios para perros
         </p>
-        <h1 className="mt-3 max-w-3xl animate-fade-up font-display text-5xl font-semibold leading-[1.05] tracking-tight sm:text-6xl md:text-7xl">
+        <h1 className="mt-3 max-w-3xl animate-fade-up font-display text-4xl font-semibold leading-[1.05] tracking-tight sm:text-6xl md:text-7xl">
           Mora & Hueso
         </h1>
         <p className="mt-5 max-w-md animate-fade-up text-base leading-relaxed text-bone/75 [animation-delay:120ms]">
@@ -115,7 +115,7 @@ export function HeroCarousel() {
             <ChevronRight className="h-5 w-5" />
           </button>
 
-          <div className="ml-2 flex gap-2" role="tablist" aria-label="Diapositivas">
+          <div className="ml-1 flex items-center" role="tablist" aria-label="Diapositivas">
             {SLIDES.map((_, i) => (
               <button
                 key={i}
@@ -124,13 +124,17 @@ export function HeroCarousel() {
                 aria-selected={i === index}
                 aria-label={`Ir a imagen ${i + 1}`}
                 onClick={() => goTo(i)}
-                className={cn(
-                  "h-1.5 rounded-full transition-all duration-300",
-                  i === index
-                    ? "w-8 bg-bone"
-                    : "w-1.5 bg-bone/35 hover:bg-bone/60"
-                )}
-              />
+                className="-m-1 flex min-h-10 min-w-10 items-center justify-center p-3"
+              >
+                <span
+                  className={cn(
+                    "h-1.5 rounded-full transition-all duration-300",
+                    i === index
+                      ? "w-8 bg-bone"
+                      : "w-1.5 bg-bone/35 hover:bg-bone/60"
+                  )}
+                />
+              </button>
             ))}
           </div>
         </div>

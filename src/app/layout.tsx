@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Fraunces, Sora } from "next/font/google";
 import "./globals.css";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -22,6 +22,12 @@ export const metadata: Metadata = {
   title: "Mora & Hueso | Premios para perros",
   description:
     "Premios naturales, galletas, huesos y snacks dentales elaborados con ingredientes limpios.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

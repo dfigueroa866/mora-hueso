@@ -39,10 +39,10 @@ export function ProductCard({ product }: { product: ProductCardData }) {
         )}
       </div>
       <div className="mt-3 space-y-1">
-        <p className="text-[11px] uppercase tracking-[0.14em] text-ink-muted">
+        <p className="truncate text-[11px] uppercase tracking-[0.14em] text-ink-muted">
           {categoryLabel(product.category)} · {product.packageSize}
         </p>
-        <h3 className="font-display text-lg leading-snug text-ink transition group-hover:text-berry">
+        <h3 className="line-clamp-2 font-display text-base leading-snug text-ink transition group-hover:text-berry md:text-lg">
           {product.name}
         </h3>
         <p className="text-sm font-medium text-ink">{formatPrice(product.price)}</p>

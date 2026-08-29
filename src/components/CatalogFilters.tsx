@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { ProductCard, ProductCardData } from "./ProductCard";
 import { CATEGORIES } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 
 type Props = {
   products: Array<ProductCardData & { ingredients: string }>;
@@ -13,6 +14,11 @@ export function CatalogFilters({ products }: Props) {
   const [ingredient, setIngredient] = useState("");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  const activeFilterCount = [category, ingredient.trim(), minPrice, maxPrice].filter(
+    Boolean
+  ).length;
 
   const list = useMemo(() => {
     return products.filter((p) => {
@@ -33,7 +39,21 @@ export function CatalogFilters({ products }: Props) {
 
   return (
     <div>
-      <div className="mb-8 grid gap-3 rounded-sm border border-ink/10 bg-white/50 p-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-8">
+        <button
+          type="button"
+          className="btn-ghost mb-3 w-full sm:hidden"
+          onClick={() => setFiltersOpen((v) => !v)}
+          aria-expanded={filtersOpen}
+        >
+          Filtros{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+        </button>
+        <div
+          className={cn(
+            "gap-3 rounded-sm border border-ink/10 bg-white/50 p-4 sm:grid-cols-2 lg:grid-cols-4",
+            filtersOpen ? "grid" : "hidden sm:grid"
+          )}
+        >
         <div>
           <label className="label">Categoría</label>
           <select
@@ -79,6 +99,7 @@ export function CatalogFilters({ products }: Props) {
             value={ingredient}
             onChange={(e) => setIngredient(e.target.value)}
           />
+        </div>
         </div>
       </div>
 
