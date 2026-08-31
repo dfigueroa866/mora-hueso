@@ -124,11 +124,11 @@ export function HeroCarousel() {
                 aria-selected={i === index}
                 aria-label={`Ir a imagen ${i + 1}`}
                 onClick={() => goTo(i)}
-                className="-m-1 flex min-h-10 min-w-10 items-center justify-center p-3"
+                className="relative p-3 -m-3"
               >
                 <span
                   className={cn(
-                    "h-1.5 rounded-full transition-all duration-300",
+                    "block h-1.5 rounded-full transition-all duration-300",
                     i === index
                       ? "w-8 bg-bone"
                       : "w-1.5 bg-bone/35 hover:bg-bone/60"

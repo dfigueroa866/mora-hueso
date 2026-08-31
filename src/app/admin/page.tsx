@@ -629,10 +629,12 @@ export default function AdminPage() {
                           inputMode="numeric"
                           className="field h-10 w-full tabular-nums"
                           defaultValue={p.stock}
-                          key={`${p.id}-${p.stock}`}
-                          onBlur={(e) =>
-                            updateStock(p.id, Number(e.target.value))
-                          }
+                          key={`stock-m-${p.id}-${p.stock}`}
+                          onBlur={(e) => {
+                            const next = Number(e.target.value);
+                            if (!Number.isFinite(next) || next === p.stock) return;
+                            updateStock(p.id, next);
+                          }}
                         />
                       </label>
                       <div className="mt-3 flex flex-wrap gap-2">
@@ -749,10 +751,12 @@ export default function AdminPage() {
                           inputMode="numeric"
                           className="field h-8 w-24 px-2 py-0 text-[13px] tabular-nums"
                           defaultValue={p.stock}
-                          key={`${p.id}-${p.stock}`}
-                          onBlur={(e) =>
-                            updateStock(p.id, Number(e.target.value))
-                          }
+                          key={`stock-d-${p.id}-${p.stock}`}
+                          onBlur={(e) => {
+                            const next = Number(e.target.value);
+                            if (!Number.isFinite(next) || next === p.stock) return;
+                            updateStock(p.id, next);
+                          }}
                         />
                       </td>
                       <td className="max-w-[140px] truncate px-2 py-1.5 align-middle text-ink-muted">

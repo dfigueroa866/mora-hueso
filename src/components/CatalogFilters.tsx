@@ -46,12 +46,16 @@ export function CatalogFilters({ products }: Props) {
           onClick={() => setFiltersOpen((v) => !v)}
           aria-expanded={filtersOpen}
         >
-          Filtros{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+          Filtros
+          {activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+          <span className="text-ink-muted">
+            {filtersOpen ? " · ocultar" : " · mostrar"}
+          </span>
         </button>
         <div
           className={cn(
-            "gap-3 rounded-sm border border-ink/10 bg-white/50 p-4 sm:grid-cols-2 lg:grid-cols-4",
-            filtersOpen ? "grid" : "hidden sm:grid"
+            "grid gap-3 rounded-sm border border-ink/10 bg-white/50 p-4 sm:grid-cols-2 lg:grid-cols-4",
+            !filtersOpen && "max-sm:hidden"
           )}
         >
         <div>

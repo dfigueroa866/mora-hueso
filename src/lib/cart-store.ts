@@ -70,9 +70,21 @@ export const useCart = create<CartState>()(
         })),
       clear: () => set({ items: [] }),
       subtotal: () =>
-        get().items.reduce((sum, i) => sum + i.price * i.quantity, 0),
-      count: () => get().items.reduce((sum, i) => sum + i.quantity, 0),
+        (get().items ?? []).reduce((sum, i) => sum + i.price * i.quantity, 0),
+      count: () => (get().items ?? []).reduce((sum, i) => sum + i.quantity, 0),
     }),
-    { name: "mora-hueso-cart" }
+    {
+      name: "mora-hueso-cart",
+      merge: (persistedState, currentState) => {
+        const persisted = (persistedState ?? {}) as Partial<CartState>;
+        return {
+          ...currentState,
+          ...persisted,
+          items: Array.isArray(persisted.items)
+            ? persisted.items
+            : currentState.items,
+        };
+      },
+    }
   )
 );

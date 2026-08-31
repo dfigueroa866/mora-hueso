@@ -22,7 +22,9 @@ const links = [
 
 export function SiteHeader() {
   const pathname = usePathname();
-  const count = useCart((s) => s.items.reduce((n, i) => n + i.quantity, 0));
+  const count = useCart((s) =>
+    (s.items ?? []).reduce((n, i) => n + i.quantity, 0)
+  );
   const [user, setUser] = useState<User>(null);
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
