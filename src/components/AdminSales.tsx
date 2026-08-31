@@ -174,21 +174,23 @@ export function AdminSales({ products }: { products: CatalogProduct[] }) {
   return (
     <div className="space-y-6">
       <div className="border border-ink/10 bg-white/50 p-4">
-        <div className="flex flex-wrap gap-2">
-          {PRESETS.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => applyPreset(p.id)}
-              className={`px-3 py-1.5 text-xs uppercase tracking-[0.12em] transition ${
-                preset === p.id
-                  ? "border-b-2 border-berry text-ink"
-                  : "text-ink-muted hover:text-ink"
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
+        <div className="-mx-1 overflow-x-auto px-1">
+          <div className="flex min-w-max gap-1">
+            {PRESETS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => applyPreset(p.id)}
+                className={`shrink-0 px-3 py-2.5 text-xs uppercase tracking-[0.12em] transition ${
+                  preset === p.id
+                    ? "border-b-2 border-berry text-ink"
+                    : "text-ink-muted hover:text-ink"
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -243,10 +245,10 @@ export function AdminSales({ products }: { products: CatalogProduct[] }) {
           </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-3">
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
           <button
             type="button"
-            className="btn-ghost"
+            className="btn-ghost w-full sm:w-auto"
             disabled={downloading !== null}
             onClick={() => void download("detail")}
           >
@@ -256,7 +258,7 @@ export function AdminSales({ products }: { products: CatalogProduct[] }) {
           </button>
           <button
             type="button"
-            className="btn-primary"
+            className="btn-primary w-full sm:w-auto"
             disabled={downloading !== null}
             onClick={() => void download("summary")}
           >
@@ -294,7 +296,7 @@ export function AdminSales({ products }: { products: CatalogProduct[] }) {
                 <p className="text-xs uppercase tracking-[0.14em] text-ink-muted">
                   {label}
                 </p>
-                <p className="mt-2 font-display text-3xl">{value}</p>
+                <p className="mt-2 font-display text-2xl md:text-3xl">{value}</p>
               </div>
             ))}
           </div>
@@ -315,7 +317,50 @@ export function AdminSales({ products }: { products: CatalogProduct[] }) {
           <div className="border-b border-ink/10 bg-ink/[0.03] px-3 py-2">
             <h2 className="font-display text-xl">Ventas por producto</h2>
           </div>
-          <div className="overflow-x-auto">
+          <ul className="divide-y divide-ink/10 md:hidden">
+            {report.byProduct.map((row) => (
+              <li
+                key={`${row.sku}-${row.productId ?? "none"}`}
+                className="p-4"
+              >
+                <p className="font-medium leading-snug text-ink">{row.name}</p>
+                <p className="mt-1 font-mono text-xs text-ink-muted">
+                  {row.sku}
+                </p>
+                <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <dt className="text-xs uppercase tracking-[0.12em] text-ink-muted">
+                      Uds
+                    </dt>
+                    <dd className="mt-0.5 tabular-nums">{row.units}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs uppercase tracking-[0.12em] text-ink-muted">
+                      Ingreso
+                    </dt>
+                    <dd className="mt-0.5 tabular-nums">
+                      {formatPrice(row.revenue)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs uppercase tracking-[0.12em] text-ink-muted">
+                      Mix
+                    </dt>
+                    <dd className="mt-0.5 tabular-nums">
+                      {row.mixPercent.toFixed(1)}%
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs uppercase tracking-[0.12em] text-ink-muted">
+                      Pedidos
+                    </dt>
+                    <dd className="mt-0.5 tabular-nums">{row.orderCount}</dd>
+                  </div>
+                </dl>
+              </li>
+            ))}
+          </ul>
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-ink/10 text-xs uppercase tracking-[0.12em] text-ink-muted">

@@ -110,7 +110,7 @@ export function AdminPolicies() {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+    <div className="grid min-w-0 gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
       <aside className="space-y-2">
         <p className="text-xs uppercase tracking-[0.14em] text-ink-muted">
           Documentos
@@ -131,7 +131,7 @@ export function AdminPolicies() {
         ))}
       </aside>
 
-      <form onSubmit={onSave} className="space-y-4 border border-ink/10 bg-white/60 p-5">
+      <form onSubmit={onSave} className="min-w-0 space-y-4 border border-ink/10 bg-white/60 p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="font-display text-2xl font-semibold">Editar política</h2>
@@ -169,7 +169,7 @@ export function AdminPolicies() {
           </label>
           <textarea
             id="legal-content"
-            className="field min-h-[420px] font-mono text-xs leading-relaxed"
+            className="field min-h-[280px] w-full min-w-0 font-mono text-xs leading-relaxed sm:min-h-[420px]"
             required
             value={content}
             onChange={(e) => setContent(e.target.value)}
@@ -179,7 +179,7 @@ export function AdminPolicies() {
         {error && <p className="text-sm text-berry">{error}</p>}
         {msg && <p className="text-sm text-sage">{msg}</p>}
 
-        <button type="submit" className="btn-primary" disabled={saving}>
+        <button type="submit" className="btn-primary w-full sm:w-auto" disabled={saving}>
           {saving ? "Guardando…" : "Guardar cambios"}
         </button>
       </form>

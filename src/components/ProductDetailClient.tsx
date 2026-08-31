@@ -29,7 +29,14 @@ export function ProductDetailClient({ product }: { product: Product }) {
   const addItem = useCart((s) => s.addItem);
   const router = useRouter();
   const available = isAvailable(product.stock);
-  const nutrition = JSON.parse(product.nutrition) as Record<string, string>;
+  const nutrition = (() => {
+    try {
+      const parsed = JSON.parse(product.nutrition) as Record<string, string>;
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {} as Record<string, string>;
+    }
+  })();
 
   function addToCart() {
     if (!available) return;

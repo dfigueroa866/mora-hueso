@@ -395,7 +395,7 @@ export default function AdminPage() {
           </p>
         </div>
         {tab !== "form" && (
-          <button className="btn-primary" onClick={startCreate}>
+          <button className="btn-primary w-full sm:w-auto" onClick={startCreate}>
             Nuevo producto
           </button>
         )}
@@ -415,7 +415,7 @@ export default function AdminPage() {
             <p className="text-xs uppercase tracking-[0.14em] text-ink-muted">
               {label}
             </p>
-            <p className="mt-2 font-display text-3xl">{value}</p>
+            <p className="mt-2 font-display text-2xl md:text-3xl">{value}</p>
           </div>
         ))}
         <button
@@ -435,7 +435,7 @@ export default function AdminPage() {
             Ingresos
           </p>
           <p
-            className={`mt-2 font-display text-3xl ${
+            className={`mt-2 font-display text-2xl md:text-3xl ${
               tab === "sales" ? "text-sage" : ""
             }`}
           >
@@ -463,7 +463,7 @@ export default function AdminPage() {
             Alertas stock
           </p>
           <p
-            className={`mt-2 font-display text-3xl ${
+            className={`mt-2 font-display text-2xl md:text-3xl ${
               tab === "alerts" || data.stats.lowStockCount > 0
                 ? "text-berry"
                 : ""
@@ -476,7 +476,8 @@ export default function AdminPage() {
       )}
 
       {tab !== "form" && (
-      <div className="flex gap-2 border-b border-ink/10">
+      <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+        <div className="flex min-w-max gap-2 border-b border-ink/10">
         {(
           [
             ["inventory", "Inventario"],
@@ -488,7 +489,7 @@ export default function AdminPage() {
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`px-4 py-2 text-sm transition ${
+            className={`shrink-0 px-4 py-3 text-sm transition ${
               tab === key
                 ? "border-b-2 border-berry text-ink"
                 : "text-ink-muted hover:text-ink"
@@ -497,6 +498,7 @@ export default function AdminPage() {
             {label}
           </button>
         ))}
+        </div>
       </div>
       )}
 
@@ -514,15 +516,15 @@ export default function AdminPage() {
       {tab === "inventory" && (
         <div className="border border-ink/10 bg-white/60 p-5">
           <h2 className="font-display text-xl">Carga masiva (CSV)</h2>
-          <div className="mt-4 flex flex-wrap items-center gap-3">
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
             <button
               type="button"
-              className="btn-ghost"
+              className="btn-ghost w-full sm:w-auto"
               onClick={downloadCsvTemplate}
             >
               Descargar plantilla CSV
             </button>
-            <label className="btn-primary cursor-pointer">
+            <label className="btn-primary w-full cursor-pointer sm:w-auto">
               {csvUploading ? "Subiendo…" : "Subir CSV"}
               <input
                 type="file"
@@ -547,7 +549,7 @@ export default function AdminPage() {
 
       {tab === "inventory" && (
         <div className="overflow-hidden rounded-sm border border-ink/10 bg-white/70">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink/10 bg-ink/[0.03] px-3 py-2">
+          <div className="flex flex-col gap-2 border-b border-ink/10 bg-ink/[0.03] px-3 py-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
             <p className="text-xs text-ink-muted">
               {data.products.length} registro
               {data.products.length === 1 ? "" : "s"}
@@ -557,7 +559,7 @@ export default function AdminPage() {
             </p>
             <button
               type="button"
-              className="btn-ghost px-3 py-1.5 text-xs disabled:opacity-40"
+              className="btn-ghost w-full px-3 py-1.5 text-xs disabled:opacity-40 sm:w-auto"
               disabled={selectedIds.length === 0 || bulkDeleting}
               onClick={removeSelected}
             >
@@ -567,7 +569,98 @@ export default function AdminPage() {
             </button>
           </div>
 
-          <div className="overflow-x-auto">
+          <ul className="divide-y divide-ink/10 md:hidden">
+            {data.products.map((p) => {
+              const checked = selectedIds.includes(p.id);
+              return (
+                <li
+                  key={p.id}
+                  className={`p-4 ${!p.active ? "opacity-45" : ""} ${
+                    checked ? "bg-berry/[0.04]" : ""
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-4 w-4 accent-berry"
+                      disabled={!p.active}
+                      checked={checked}
+                      onChange={() => {
+                        setSelectedIds((prev) =>
+                          prev.includes(p.id)
+                            ? prev.filter((id) => id !== p.id)
+                            : [...prev, p.id]
+                        );
+                      }}
+                      aria-label={`Seleccionar ${p.name}`}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium leading-snug text-ink">
+                        {p.name}
+                      </p>
+                      {!p.active ? (
+                        <span className="mt-0.5 inline-block text-[10px] font-medium uppercase tracking-wide text-ink-muted">
+                          Inactivo
+                        </span>
+                      ) : p.stock <= 0 ? (
+                        <span className="mt-0.5 inline-block text-[10px] font-medium uppercase tracking-wide text-berry">
+                          No disponible
+                        </span>
+                      ) : null}
+                      <p className="mt-1 font-mono text-xs text-ink-muted">
+                        {p.sku}
+                      </p>
+                      <p className="text-sm text-ink-muted">
+                        {categoryLabel(p.category)}
+                      </p>
+                      <p className="mt-1 font-medium tabular-nums">
+                        {formatPrice(p.price)}
+                      </p>
+                      {p.supplier ? (
+                        <p className="truncate text-sm text-ink-muted">
+                          {p.supplier}
+                        </p>
+                      ) : null}
+                      <label className="mt-3 block">
+                        <span className="label">Stock</span>
+                        <input
+                          type="number"
+                          min={0}
+                          inputMode="numeric"
+                          className="field h-10 w-full tabular-nums"
+                          defaultValue={p.stock}
+                          key={`stock-m-${p.id}-${p.stock}`}
+                          onBlur={(e) => {
+                            const next = Number(e.target.value);
+                            if (!Number.isFinite(next) || next === p.stock) return;
+                            updateStock(p.id, next);
+                          }}
+                        />
+                      </label>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          className="btn-ghost px-3 py-2 text-xs"
+                          onClick={() => startEdit(p)}
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-ghost px-3 py-2 text-xs"
+                          onClick={() => toggleActive(p)}
+                        >
+                          {p.active ? "Desactivar" : "Activar"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full min-w-[780px] border-collapse text-left text-[13px]">
               <thead>
                 <tr className="border-b border-ink/10 bg-bone-warm/60 text-[10px] uppercase tracking-[0.12em] text-ink-muted">
@@ -658,10 +751,12 @@ export default function AdminPage() {
                           inputMode="numeric"
                           className="field h-8 w-24 px-2 py-0 text-[13px] tabular-nums"
                           defaultValue={p.stock}
-                          key={`${p.id}-${p.stock}`}
-                          onBlur={(e) =>
-                            updateStock(p.id, Number(e.target.value))
-                          }
+                          key={`stock-d-${p.id}-${p.stock}`}
+                          onBlur={(e) => {
+                            const next = Number(e.target.value);
+                            if (!Number.isFinite(next) || next === p.stock) return;
+                            updateStock(p.id, next);
+                          }}
                         />
                       </td>
                       <td className="max-w-[140px] truncate px-2 py-1.5 align-middle text-ink-muted">
@@ -708,7 +803,48 @@ export default function AdminPage() {
               <div className="border-b border-ink/10 bg-ink/[0.03] px-3 py-2">
                 <h2 className="font-display text-xl">Alertas de stock</h2>
               </div>
-              <div className="overflow-x-auto">
+              <ul className="divide-y divide-ink/10 md:hidden">
+                {data.lowStockAlerts.map((p) => (
+                  <li key={p.id} className="p-4">
+                    <p className="font-medium leading-snug text-ink">{p.name}</p>
+                    <p className="mt-1 font-mono text-xs text-ink-muted">
+                      {p.sku}
+                    </p>
+                    <p className="text-sm text-ink-muted">
+                      {categoryLabel(p.category)}
+                    </p>
+                    <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <dt className="text-xs uppercase tracking-[0.12em] text-ink-muted">
+                          Stock
+                        </dt>
+                        <dd className="mt-0.5 font-medium tabular-nums">
+                          {p.stock}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs uppercase tracking-[0.12em] text-ink-muted">
+                          Alerta en
+                        </dt>
+                        <dd className="mt-0.5 tabular-nums text-ink-muted">
+                          {p.lowStockAt}
+                        </dd>
+                      </div>
+                    </dl>
+                    <p className="mt-2 font-medium text-berry">
+                      {p.stock <= 0 ? "Agotado" : `${p.stock} uds`}
+                    </p>
+                    <button
+                      type="button"
+                      className="btn-ghost mt-3 w-full px-3 py-2 text-xs"
+                      onClick={() => startEdit(p)}
+                    >
+                      Editar
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div className="hidden overflow-x-auto md:block">
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="border-b border-ink/10 text-xs uppercase tracking-[0.12em] text-ink-muted">
@@ -768,7 +904,7 @@ export default function AdminPage() {
       {tab === "form" && (
         <form
           onSubmit={saveProduct}
-          className="grid w-full gap-4 sm:grid-cols-2 lg:grid-cols-3"
+          className="grid w-full min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-3"
         >
           <div className="sm:col-span-2 lg:col-span-3">
             <label className="label">Nombre</label>
@@ -905,13 +1041,13 @@ export default function AdminPage() {
               onChange={(e) => setForm({ ...form, image: e.target.value })}
             />
           </div>
-          <div className="sm:col-span-2 lg:col-span-3 flex gap-3">
-            <button type="submit" className="btn-primary">
+          <div className="flex flex-col gap-3 sm:col-span-2 sm:flex-row lg:col-span-3">
+            <button type="submit" className="btn-primary w-full sm:w-auto">
               {editingId ? "Actualizar" : "Crear producto"}
             </button>
             <button
               type="button"
-              className="btn-ghost"
+              className="btn-ghost w-full sm:w-auto"
               onClick={() => {
                 setEditingId(null);
                 setTab("inventory");
