@@ -11,7 +11,8 @@ export type BlobProductImage = {
 export function imageMatchKey(value: string): string {
   return value
     .normalize("NFD")
-    .replace(/\p{M}/gu, "")
+    // Combining marks (á → a + accent). Avoid \p{M}: Next's typecheck rejects the `u` flag.
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/\.(jpe?g|png|webp|gif)$/i, "")
     .replace(/[^a-z0-9]+/g, " ")
