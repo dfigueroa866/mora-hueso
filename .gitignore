@@ -9,3 +9,5 @@ prisma/dev.db-journal
 .DS_Store
 public/uploads/reviews/*
 !public/uploads/reviews/.gitkeep
+# Copias locales de fotos (se sirven desde Vercel Blob)
+/Images/

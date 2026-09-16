@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import { productSchema } from "@/lib/validators";
+import { preserveProductText } from "@/lib/text-encoding";
 
 type Params = { params: { id: string } };
 
@@ -10,7 +11,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (!product || !product.active) {
     return NextResponse.json({ error: "Producto no encontrado" }, { status: 404 });
   }
-  return NextResponse.json(product);
+  return NextResponse.json(preserveProductText(product));
 }
 
 export async function PUT(req: NextRequest, { params }: Params) {
@@ -33,7 +34,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
       where: { id: params.id },
       data: parsed.data,
     });
-    return NextResponse.json(product);
+    return NextResponse.json(preserveProductText(product));
   } catch {
     return NextResponse.json({ error: "No se pudo actualizar" }, { status: 400 });
   }

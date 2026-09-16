@@ -1,7 +1,7 @@
 import Link from "next/link";
-import Image from "next/image";
 import { formatPrice, categoryLabel, isAvailable } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import { ProductImage } from "@/components/ProductImage";
 
 export type ProductCardData = {
   id: string;
@@ -22,7 +22,7 @@ export function ProductCard({ product }: { product: ProductCardData }) {
       className="group block animate-fade-up"
     >
       <div className="relative aspect-[4/5] overflow-hidden bg-bone-warm">
-        <Image
+        <ProductImage
           src={product.image}
           alt={product.name}
           fill

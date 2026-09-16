@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatPrice } from "@/lib/constants";
+import { SalesChart } from "@/components/SalesChart";
 
 type CatalogProduct = {
   id: string;
@@ -34,6 +35,14 @@ type ProductSalesRow = {
 type SalesReport = {
   kpis: SalesKpis;
   byProduct: ProductSalesRow[];
+  series: {
+    key: string;
+    label: string;
+    revenue: number;
+    units: number;
+    orderCount: number;
+  }[];
+  seriesGrain: "day" | "week" | "month";
 };
 
 type DatePreset = "today" | "7d" | "30d" | "month" | "year" | "all" | "custom";
@@ -90,9 +99,7 @@ export function AdminSales({ products }: { products: CatalogProduct[] }) {
   const [report, setReport] = useState<SalesReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [downloading, setDownloading] = useState<"detail" | "summary" | null>(
-    null
-  );
+  const [downloading, setDownloading] = useState(false);
 
   const catalog = useMemo(
     () =>
@@ -140,31 +147,28 @@ export function AdminSales({ products }: { products: CatalogProduct[] }) {
     setTo(range.to);
   }
 
-  async function download(kind: "detail" | "summary") {
-    setDownloading(kind);
+  async function downloadDetail() {
+    setDownloading(true);
     setError("");
     try {
       const params = queryFromFilters(from, to, productId);
-      params.set("kind", kind);
+      params.set("kind", "detail");
       const res = await fetch(`/api/admin/sales/export?${params.toString()}`);
       if (!res.ok) {
-        setError("No se pudo descargar el reporte");
+        setError("No se pudo descargar el detalle");
         return;
       }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download =
-        kind === "summary"
-          ? `ventas-productos-${mexicoTodayIso()}.csv`
-          : `ventas-detalle-${mexicoTodayIso()}.csv`;
+      a.download = `ventas-detalle-${mexicoTodayIso()}.csv`;
       a.click();
       URL.revokeObjectURL(url);
     } catch {
-      setError("No se pudo descargar el reporte");
+      setError("No se pudo descargar el detalle");
     } finally {
-      setDownloading(null);
+      setDownloading(false);
     }
   }
 
@@ -244,29 +248,6 @@ export function AdminSales({ products }: { products: CatalogProduct[] }) {
             </select>
           </div>
         </div>
-
-        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-          <button
-            type="button"
-            className="btn-ghost w-full sm:w-auto"
-            disabled={downloading !== null}
-            onClick={() => void download("detail")}
-          >
-            {downloading === "detail"
-              ? "Descargando…"
-              : "Descargar detalle"}
-          </button>
-          <button
-            type="button"
-            className="btn-primary w-full sm:w-auto"
-            disabled={downloading !== null}
-            onClick={() => void download("summary")}
-          >
-            {downloading === "summary"
-              ? "Descargando…"
-              : "Descargar por producto"}
-          </button>
-        </div>
       </div>
 
       {error && (
@@ -312,86 +293,30 @@ export function AdminSales({ products }: { products: CatalogProduct[] }) {
         <p className="text-ink-muted">No hay ventas en este periodo.</p>
       )}
 
-      {!loading && report && report.byProduct.length > 0 && (
+      {!loading && report && report.series.length > 0 && !empty && (
         <div className="overflow-hidden rounded-sm border border-ink/10 bg-white/70">
-          <div className="border-b border-ink/10 bg-ink/[0.03] px-3 py-2">
-            <h2 className="font-display text-xl">Ventas por producto</h2>
+          <div className="flex flex-col gap-3 border-b border-ink/10 bg-ink/[0.03] px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="font-display text-xl">Evolución de ventas</h2>
+              <p className="mt-0.5 text-xs text-ink-muted">
+                Área de ingresos en el periodo seleccionado. El CSV incluye cada
+                línea de pedido.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn-primary w-full sm:w-auto"
+              disabled={downloading}
+              onClick={() => void downloadDetail()}
+            >
+              {downloading ? "Descargando…" : "Descargar detalle"}
+            </button>
           </div>
-          <ul className="divide-y divide-ink/10 md:hidden">
-            {report.byProduct.map((row) => (
-              <li
-                key={`${row.sku}-${row.productId ?? "none"}`}
-                className="p-4"
-              >
-                <p className="font-medium leading-snug text-ink">{row.name}</p>
-                <p className="mt-1 font-mono text-xs text-ink-muted">
-                  {row.sku}
-                </p>
-                <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <dt className="text-xs uppercase tracking-[0.12em] text-ink-muted">
-                      Uds
-                    </dt>
-                    <dd className="mt-0.5 tabular-nums">{row.units}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs uppercase tracking-[0.12em] text-ink-muted">
-                      Ingreso
-                    </dt>
-                    <dd className="mt-0.5 tabular-nums">
-                      {formatPrice(row.revenue)}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs uppercase tracking-[0.12em] text-ink-muted">
-                      Mix
-                    </dt>
-                    <dd className="mt-0.5 tabular-nums">
-                      {row.mixPercent.toFixed(1)}%
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs uppercase tracking-[0.12em] text-ink-muted">
-                      Pedidos
-                    </dt>
-                    <dd className="mt-0.5 tabular-nums">{row.orderCount}</dd>
-                  </div>
-                </dl>
-              </li>
-            ))}
-          </ul>
-          <div className="hidden overflow-x-auto md:block">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-ink/10 text-xs uppercase tracking-[0.12em] text-ink-muted">
-                  <th className="px-3 py-2 font-medium">Producto</th>
-                  <th className="px-3 py-2 font-medium">SKU</th>
-                  <th className="px-3 py-2 font-medium text-right">Uds</th>
-                  <th className="px-3 py-2 font-medium text-right">Ingreso</th>
-                  <th className="px-3 py-2 font-medium text-right">Mix</th>
-                  <th className="px-3 py-2 font-medium text-right">Pedidos</th>
-                </tr>
-              </thead>
-              <tbody>
-                {report.byProduct.map((row) => (
-                  <tr
-                    key={`${row.sku}-${row.productId ?? "none"}`}
-                    className="border-b border-ink/5"
-                  >
-                    <td className="px-3 py-2">{row.name}</td>
-                    <td className="px-3 py-2 text-ink-muted">{row.sku}</td>
-                    <td className="px-3 py-2 text-right">{row.units}</td>
-                    <td className="px-3 py-2 text-right">
-                      {formatPrice(row.revenue)}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      {row.mixPercent.toFixed(1)}%
-                    </td>
-                    <td className="px-3 py-2 text-right">{row.orderCount}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="p-4">
+            <SalesChart
+              points={report.series}
+              grain={report.seriesGrain}
+            />
           </div>
         </div>
       )}

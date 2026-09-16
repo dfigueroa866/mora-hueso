@@ -1,7 +1,11 @@
 import { z } from "zod";
+import { normalizeProductImageSrc } from "@/lib/product-image";
+import { preserveUserText } from "@/lib/text-encoding";
+
+const text = (schema: z.ZodString) => schema.transform(preserveUserText);
 
 export const registerSchema = z.object({
-  name: z.string().min(2, "El nombre debe tener al menos 2 caracteres"),
+  name: text(z.string().min(2, "El nombre debe tener al menos 2 caracteres")),
   email: z.string().email("Correo inválido"),
   password: z
     .string()
@@ -34,28 +38,28 @@ export const resetSchema = z.object({
 });
 
 export const profileSchema = z.object({
-  name: z.string().min(2, "Nombre demasiado corto"),
+  name: text(z.string().min(2, "Nombre demasiado corto")),
   phone: z.string().min(10, "Teléfono inválido").max(15),
 });
 
 export const addressSchema = z.object({
-  label: z.string().min(1).optional(),
-  street: z.string().min(5, "Calle requerida"),
-  city: z.string().min(2, "Ciudad requerida"),
-  state: z.string().min(2, "Estado requerido"),
+  label: text(z.string().min(1)).optional(),
+  street: text(z.string().min(5, "Calle requerida")),
+  city: text(z.string().min(2, "Ciudad requerida")),
+  state: text(z.string().min(2, "Estado requerido")),
   postalCode: z.string().min(4, "Código postal inválido"),
-  country: z.string().min(2, "País requerido"),
-  references: z.string().optional(),
+  country: text(z.string().min(2, "País requerido")),
+  references: text(z.string()).optional(),
   isDefault: z.boolean().optional(),
 });
 
 export const productSchema = z.object({
-  name: z.string().min(2, "El nombre debe tener al menos 2 caracteres"),
-  description: z
-    .string()
-    .min(10, "La descripción debe tener al menos 10 caracteres"),
+  name: text(z.string().min(2, "El nombre debe tener al menos 2 caracteres")),
+  description: text(
+    z.string().min(10, "La descripción debe tener al menos 10 caracteres")
+  ),
   price: z.number({ invalid_type_error: "El precio debe ser un número" }).positive("El precio debe ser mayor a 0"),
-  category: z.enum(["naturales", "galletas", "huesos", "dentales"], {
+  category: z.enum(["naturales", "galletas", "huesos", "dentales","mix para hornear", "deshidratados vegetales", "masticables"], {
     errorMap: () => ({ message: "Elige una categoría válida" }),
   }),
   stock: z
@@ -63,13 +67,16 @@ export const productSchema = z.object({
     .int("El stock debe ser un número entero")
     .min(0, "El stock no puede ser negativo"),
   sku: z.string().min(3, "El SKU debe tener al menos 3 caracteres"),
-  supplier: z.string().min(2, "El proveedor debe tener al menos 2 caracteres"),
-  packageSize: z.string().min(1, "Indica el empaque"),
-  ingredients: z
+  supplier: text(z.string().min(2, "El proveedor debe tener al menos 2 caracteres")),
+  packageSize: text(z.string().min(1, "Indica el empaque")),
+  ingredients: text(
+    z.string().min(2, "Los ingredientes deben tener al menos 2 caracteres")
+  ),
+  nutrition: text(z.string().min(2, "Indica la información nutricional")),
+  image: z
     .string()
-    .min(2, "Los ingredientes deben tener al menos 2 caracteres"),
-  nutrition: z.string().min(2, "Indica la información nutricional"),
-  image: z.string().min(1, "Indica la URL de la imagen"),
+    .min(1, "Indica la URL de la imagen")
+    .transform((value) => normalizeProductImageSrc(value)),
   lowStockAt: z
     .number({ invalid_type_error: "El umbral de alerta debe ser un número" })
     .int("El umbral de alerta debe ser un número entero")
@@ -81,11 +88,13 @@ export const productSchema = z.object({
 export const reviewSchema = z.object({
   productId: z.string().min(1, "Selecciona un producto"),
   rating: z.coerce.number().int().min(1, "Mínimo 1 estrella").max(5, "Máximo 5 estrellas"),
-  title: z.string().max(80, "Título demasiado largo").optional().default(""),
-  comment: z
-    .string()
-    .min(10, "Cuéntanos un poco más (mínimo 10 caracteres)")
-    .max(1000, "Máximo 1000 caracteres"),
+  title: text(z.string().max(80, "Título demasiado largo")).optional().default(""),
+  comment: text(
+    z
+      .string()
+      .min(10, "Cuéntanos un poco más (mínimo 10 caracteres)")
+      .max(1000, "Máximo 1000 caracteres")
+  ),
 });
 
 export const checkoutSchema = z.object({
@@ -98,12 +107,12 @@ export const checkoutSchema = z.object({
     )
     .min(1, "El carrito está vacío"),
   shippingMethod: z.enum(["standard", "express"]),
-  shipStreet: z.string().min(5),
-  shipCity: z.string().min(2),
-  shipState: z.string().min(2, "Estado requerido"),
+  shipStreet: text(z.string().min(5)),
+  shipCity: text(z.string().min(2)),
+  shipState: text(z.string().min(2, "Estado requerido")),
   shipPostalCode: z.string().min(4),
-  shipCountry: z.string().min(2),
-  shipReferences: z.string().optional(),
-  billingName: z.string().min(2),
+  shipCountry: text(z.string().min(2)),
+  shipReferences: text(z.string()).optional(),
+  billingName: text(z.string().min(2)),
   billingEmail: z.string().email(),
 });

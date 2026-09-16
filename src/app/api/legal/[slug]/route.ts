@@ -9,10 +9,15 @@ import {
   formatLegalUpdatedAt,
 } from "@/lib/legal-store";
 import { LEGAL_META } from "@/lib/legal";
+import { preserveUserText } from "@/lib/text-encoding";
 
 const updateSchema = z.object({
-  title: z.string().min(3, "Título demasiado corto").max(160),
-  content: z.string().min(20, "El contenido es demasiado corto").max(50000),
+  title: z.string().min(3, "Título demasiado corto").max(160).transform(preserveUserText),
+  content: z
+    .string()
+    .min(20, "El contenido es demasiado corto")
+    .max(50000)
+    .transform(preserveUserText),
 });
 
 export async function GET(

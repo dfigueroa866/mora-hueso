@@ -120,6 +120,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [csvUploading, setCsvUploading] = useState(false);
   const [csvResult, setCsvResult] = useState<string>("");
+  const [blobSyncing, setBlobSyncing] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const openedEdit = useRef(false);
@@ -362,6 +363,45 @@ export default function AdminPage() {
     }
   }
 
+  async function syncBlobImages() {
+    setError("");
+    setMsg("");
+    setCsvResult("");
+    setBlobSyncing(true);
+    try {
+      const res = await fetch("/api/admin/products/sync-images", {
+        method: "POST",
+      });
+      const json = (await res.json()) as {
+        error?: string;
+        blobCount?: number;
+        updated?: number;
+        skipped?: number;
+        unmatched?: { sku: string; name: string }[];
+      };
+      if (!res.ok) {
+        setError(json.error || "No se pudieron vincular las imágenes de Blob");
+        return;
+      }
+      setMsg(
+        `Imágenes Blob: ${json.updated ?? 0} actualizadas, ${json.skipped ?? 0} ya estaban bien, ${json.unmatched?.length ?? 0} sin coincidencia (${json.blobCount ?? 0} archivos en Products/).`
+      );
+      if (json.unmatched?.length) {
+        setCsvResult(
+          json.unmatched
+            .slice(0, 15)
+            .map((u) => `${u.sku}: ${u.name}`)
+            .join("\n")
+        );
+      }
+      await load();
+    } catch {
+      setError("No se pudo vincular con Vercel Blob");
+    } finally {
+      setBlobSyncing(false);
+    }
+  }
+
   if (loading) {
     return <div className="section-pad text-ink-muted">Cargando admin…</div>;
   }
@@ -516,6 +556,10 @@ export default function AdminPage() {
       {tab === "inventory" && (
         <div className="border border-ink/10 bg-white/60 p-5">
           <h2 className="font-display text-xl">Carga masiva (CSV)</h2>
+          <p className="mt-1 text-sm text-ink-muted">
+            Acentos y eñes se conservan. Si editas en Excel, usa esta plantilla
+            (UTF-8) o vuelve a subir el archivo después de guardar.
+          </p>
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
             <button
               type="button"
@@ -538,7 +582,23 @@ export default function AdminPage() {
                 }}
               />
             </label>
+            <button
+              type="button"
+              className="btn-ghost w-full sm:w-auto"
+              disabled={blobSyncing}
+              onClick={() => void syncBlobImages()}
+            >
+              {blobSyncing ? "Vinculando…" : "Vincular imágenes Blob"}
+            </button>
           </div>
+          <p className="mt-2 text-xs text-ink-muted">
+            Las fotos deben estar en Vercel Storage →{" "}
+            <code className="text-[11px]">Products/</code>. El botón empareja
+            cada producto con el JPG cuyo nombre se parece (p. ej.{" "}
+            <code className="text-[11px]">Patitas de pollo…</code>). Requiere{" "}
+            <code className="text-[11px]">BLOB_READ_WRITE_TOKEN</code> en el
+            entorno.
+          </p>
           {csvResult && (
             <pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap rounded-sm bg-berry/5 p-3 text-xs text-berry">
               {csvResult}
@@ -1040,6 +1100,14 @@ export default function AdminPage() {
               value={form.image}
               onChange={(e) => setForm({ ...form, image: e.target.value })}
             />
+            <p className="mt-1 text-xs text-ink-muted">
+              Preferible: URL de Vercel Blob (
+              <code className="text-[11px]">
+                https://….public.blob.vercel-storage.com/Products/…
+              </code>
+              ) o usa el botón “Vincular imágenes Blob”. También sirve{" "}
+              <code className="text-[11px]">/products/archivo.jpg</code>.
+            </p>
           </div>
           <div className="flex flex-col gap-3 sm:col-span-2 sm:flex-row lg:col-span-3">
             <button type="submit" className="btn-primary w-full sm:w-auto">

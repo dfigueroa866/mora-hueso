@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { SALES_STATUSES } from "@/lib/sales-report";
+import { preserveProductText } from "@/lib/text-encoding";
 
 export async function GET() {
   const admin = await requireAdmin();
@@ -37,7 +38,7 @@ export async function GET() {
   );
 
   return NextResponse.json({
-    products,
+    products: products.map(preserveProductText),
     orders,
     lowStockAlerts,
     outOfStock: products.filter((p) => p.stock <= 0 && p.active),

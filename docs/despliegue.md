@@ -23,6 +23,7 @@ La tienda está pensada para **Vercel** (Next.js) y **Neon** (PostgreSQL). SQLit
 | `NEXT_PUBLIC_APP_URL` | `https://tu-dominio.com` sin barra final. |
 | `MERCADOPAGO_ACCESS_TOKEN` | Token PROD (o TEST en un preview). |
 | `ALLOW_DEMO_PAYMENTS` | `false` en producción real. |
+| `BLOB_READ_WRITE_TOKEN` | Lo crea Vercel al conectar Blob. Sirve para vincular fotos de `Products/` a productos desde el admin. |
 
 `NEXT_PUBLIC_*` se incrustan en el cliente: un cambio exige **redeploy**.
 
@@ -54,7 +55,8 @@ O usa el SQL editor de Neon. No subas la URL al repo.
 
 ## Limitaciones en Vercel
 
-- **Fotos de reseñas:** se guardan en `public/uploads/reviews/`. El disco del serverless no persiste; en producción conviene un storage (S3, Blob, etc.) si las reseñas con imagen son importantes.
+- **Fotos de productos:** súbelas a Vercel Blob (`Storage` → carpeta `Products/`) y en el admin usa **Vincular imágenes Blob**. El disco serverless no sirve para guardar JPG en `public/`.
+- **Fotos de reseñas:** se guardan en `public/uploads/reviews/`. El disco del serverless no persiste; en producción conviene Blob también si las reseñas con imagen son importantes.
 - **Seed:** borra todas las tablas de la app. Nunca lo ejecutes contra producción con datos reales.
 - **Preview deployments:** cada URL de preview necesita `NEXT_PUBLIC_APP_URL` coherente o los `back_urls` de MP apuntarán al dominio de Production.
 

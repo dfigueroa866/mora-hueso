@@ -1,3 +1,5 @@
+import { preserveUserText } from "@/lib/text-encoding";
+
 export const PRODUCT_CSV_HEADERS = [
   "name",
   "description",
@@ -41,7 +43,7 @@ export function escapeCsvField(value: string) {
 export function buildProductCsvTemplate() {
   const header = PRODUCT_CSV_HEADERS.join(",");
   const row = PRODUCT_CSV_EXAMPLE_ROW.map(escapeCsvField).join(",");
-  return `${header}\n${row}\n`;
+  return `\uFEFF${header}\n${row}\n`;
 }
 
 function detectDelimiter(text: string): "," | ";" {
@@ -127,7 +129,7 @@ export function rowsToObjects(rows: string[][]) {
   return rows.slice(1).map((cols, index) => {
     const obj: Record<string, string> = {};
     headers.forEach((h, i) => {
-      obj[h] = cols[i] ?? "";
+      obj[h] = preserveUserText(cols[i] ?? "");
     });
     return { row: index + 2, data: obj };
   });

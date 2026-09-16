@@ -3,6 +3,9 @@ export const CATEGORIES = [
   { value: "galletas", label: "Galletas" },
   { value: "huesos", label: "Huesos" },
   { value: "dentales", label: "Snacks dentales" },
+  { value: "mix para hornear", label: "mix para hornear" },
+  { value: "deshidratados vegetales", label: "deshidratados vegetales" },
+  { value: "masticables", label: "masticables" },
 ] as const;
 
 export const SHIPPING_METHODS = [
