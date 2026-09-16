@@ -3,14 +3,17 @@ import { CatalogFilters } from "@/components/CatalogFilters";
 import { HeroCarousel } from "@/components/HeroCarousel";
 import { TrustStamps } from "@/components/TrustStamps";
 import { ReviewsSection } from "@/components/ReviewsSection";
+import { preserveProductText } from "@/lib/text-encoding";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const products = await prisma.product.findMany({
-    where: { active: true },
-    orderBy: { name: "asc" },
-  });
+  const products = (
+    await prisma.product.findMany({
+      where: { active: true },
+      orderBy: { name: "asc" },
+    })
+  ).map(preserveProductText);
 
   return (
     <>

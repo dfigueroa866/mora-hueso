@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { productSchema } from "@/lib/validators";
 import { parseCsv, rowsToObjects } from "@/lib/csv-products";
+import { decodeUploadedText } from "@/lib/text-encoding";
 
 function getUploadName(value: Blob): string {
   if ("name" in value && typeof (value as { name?: unknown }).name === "string") {
@@ -42,9 +43,9 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      text = await blob.text();
+      text = decodeUploadedText(new Uint8Array(await blob.arrayBuffer()));
     } else {
-      text = await req.text();
+      text = decodeUploadedText(new Uint8Array(await req.arrayBuffer()));
     }
 
     if (!text.trim()) {

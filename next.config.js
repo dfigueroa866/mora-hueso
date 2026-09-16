@@ -10,7 +10,22 @@ const nextConfig = {
   ],
   images: {
     remotePatterns: [
-      { protocol: "https", hostname: "images.unsplash.com" },
+      {
+        protocol: "https",
+        hostname: "images.unsplash.com",
+        pathname: "/**",
+      },
+      // mora-hueso-blob (IAD1)
+      {
+        protocol: "https",
+        hostname: "x1ufds0is3katagw.public.blob.vercel-storage.com",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "*.public.blob.vercel-storage.com",
+        pathname: "/**",
+      },
     ],
   },
   experimental: {

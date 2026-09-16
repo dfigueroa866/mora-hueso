@@ -35,9 +35,19 @@ export type ProductSalesRow = {
   orderCount: number;
 };
 
+export type SalesPoint = {
+  key: string;
+  label: string;
+  revenue: number;
+  units: number;
+  orderCount: number;
+};
+
 export type SalesReport = {
   kpis: SalesKpis;
   byProduct: ProductSalesRow[];
+  series: SalesPoint[];
+  seriesGrain: "day" | "week" | "month";
 };
 
 type OrderWithItems = Prisma.OrderGetPayload<{
@@ -192,6 +202,152 @@ async function loadSalesOrders(filters: SalesFilters): Promise<{
   return { orders, sku };
 }
 
+function addDaysIso(iso: string, delta: number): string {
+  const next = new Date(
+    new Date(`${iso}T12:00:00.000-06:00`).getTime() + delta * 24 * 60 * 60 * 1000
+  );
+  return formatMexicoDate(next);
+}
+
+function daysInclusive(from: string, to: string): number {
+  const a = new Date(`${from}T12:00:00.000-06:00`).getTime();
+  const b = new Date(`${to}T12:00:00.000-06:00`).getTime();
+  return Math.max(1, Math.round((b - a) / 86_400_000) + 1);
+}
+
+function mondayOf(iso: string): string {
+  const date = new Date(`${iso}T12:00:00.000-06:00`);
+  const dow = date.getUTCDay();
+  const back = (dow + 6) % 7;
+  return addDaysIso(iso, -back);
+}
+
+function monthKey(iso: string): string {
+  return iso.slice(0, 7);
+}
+
+function formatDayLabel(iso: string): string {
+  const parts = iso.split("-");
+  return `${parts[2]}/${parts[1]}`;
+}
+
+function formatMonthLabel(ym: string): string {
+  const [year, month] = ym.split("-");
+  const names = [
+    "Ene", "Feb", "Mar", "Abr", "May", "Jun",
+    "Jul", "Ago", "Sep", "Oct", "Nov", "Dic",
+  ];
+  const idx = Number(month) - 1;
+  return `${names[idx] ?? month} ${year.slice(2)}`;
+}
+
+function buildSeries(
+  orders: OrderWithItems[],
+  productId: string | null,
+  sku: string | null,
+  from: string | null,
+  to: string | null
+): { series: SalesPoint[]; seriesGrain: "day" | "week" | "month" } {
+  const perDay = new Map<
+    string,
+    { revenue: number; units: number; orderIds: Set<string> }
+  >();
+
+  for (const order of orders) {
+    const day = formatMexicoDate(saleInstant(order));
+    const matchingItems = order.items.filter((item) =>
+      itemMatches(item, productId, sku)
+    );
+    if (matchingItems.length === 0) continue;
+    let revenue = 0;
+    let units = 0;
+    for (const item of matchingItems) {
+      revenue += item.price * item.quantity;
+      units += item.quantity;
+    }
+    const prev = perDay.get(day);
+    if (prev) {
+      prev.revenue = roundMoney(prev.revenue + revenue);
+      prev.units += units;
+      prev.orderIds.add(order.id);
+    } else {
+      perDay.set(day, {
+        revenue: roundMoney(revenue),
+        units,
+        orderIds: new Set([order.id]),
+      });
+    }
+  }
+
+  const dayKeys = Array.from(perDay.keys()).sort();
+  const start = from ?? dayKeys[0] ?? formatMexicoDate(new Date());
+  const end = to ?? dayKeys[dayKeys.length - 1] ?? start;
+  const span = daysInclusive(start, end);
+  const seriesGrain: "day" | "week" | "month" =
+    span > 120 ? "month" : span > 45 ? "week" : "day";
+
+  const buckets = new Map<
+    string,
+    { label: string; revenue: number; units: number; orderIds: Set<string> }
+  >();
+
+  const ensure = (key: string, label: string) => {
+    if (!buckets.has(key)) {
+      buckets.set(key, {
+        label,
+        revenue: 0,
+        units: 0,
+        orderIds: new Set(),
+      });
+    }
+    return buckets.get(key)!;
+  };
+
+  if (seriesGrain === "day") {
+    for (let d = start; d <= end; d = addDaysIso(d, 1)) {
+      ensure(d, formatDayLabel(d));
+    }
+  } else if (seriesGrain === "week") {
+    for (let d = mondayOf(start); d <= end; d = addDaysIso(d, 7)) {
+      ensure(d, formatDayLabel(d));
+    }
+  } else {
+    const endMonth = monthKey(end);
+    for (let ym = monthKey(start); ym <= endMonth; ) {
+      ensure(ym, formatMonthLabel(ym));
+      const [y, m] = ym.split("-").map(Number);
+      const nextM = m === 12 ? 1 : m + 1;
+      const nextY = m === 12 ? y + 1 : y;
+      ym = `${nextY}-${String(nextM).padStart(2, "0")}`;
+    }
+  }
+
+  for (const [day, acc] of perDay) {
+    const key =
+      seriesGrain === "day"
+        ? day
+        : seriesGrain === "week"
+          ? mondayOf(day)
+          : monthKey(day);
+    const bucket = buckets.get(key) ?? ensure(key, key);
+    bucket.revenue = roundMoney(bucket.revenue + acc.revenue);
+    bucket.units += acc.units;
+    for (const id of acc.orderIds) bucket.orderIds.add(id);
+  }
+
+  const series: SalesPoint[] = Array.from(buckets.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, bucket]) => ({
+      key,
+      label: bucket.label,
+      revenue: roundMoney(bucket.revenue),
+      units: bucket.units,
+      orderCount: bucket.orderIds.size,
+    }));
+
+  return { series, seriesGrain };
+}
+
 function aggregateSales(
   orders: OrderWithItems[],
   productId: string | null,
@@ -289,9 +445,18 @@ export async function getSalesReport(
     filters.productId,
     sku
   );
+  const { series, seriesGrain } = buildSeries(
+    orders,
+    filters.productId,
+    sku,
+    filters.from,
+    filters.to
+  );
   return {
     kpis,
     byProduct,
+    series,
+    seriesGrain,
   };
 }
 

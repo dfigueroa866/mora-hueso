@@ -8,6 +8,7 @@ import {
   categoryLabel,
   isAvailable,
 } from "@/lib/constants";
+import { normalizeProductImageSrc } from "@/lib/product-image";
 
 type Product = {
   id: string;
@@ -59,7 +60,11 @@ export function ProductDetailClient({ product }: { product: Product }) {
     <div className="grid gap-10 lg:grid-cols-2 lg:gap-14">
       <div
         className="relative min-h-[360px] animate-scale-in bg-bone-warm bg-cover bg-center lg:min-h-[560px]"
-        style={{ backgroundImage: `url(${product.image})` }}
+        style={{
+          backgroundImage: normalizeProductImageSrc(product.image)
+            ? `url(${normalizeProductImageSrc(product.image)})`
+            : undefined,
+        }}
         role="img"
         aria-label={product.name}
       />

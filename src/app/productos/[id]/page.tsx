@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { ProductDetailClient } from "@/components/ProductDetailClient";
+import { preserveProductText } from "@/lib/text-encoding";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export default async function ProductPage({ params }: Props) {
 
   return (
     <div className="section-pad">
-      <ProductDetailClient product={product} />
+      <ProductDetailClient product={preserveProductText(product)} />
     </div>
   );
 }

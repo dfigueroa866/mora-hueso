@@ -1,9 +1,9 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useCart } from "@/lib/cart-store";
 import { formatPrice, TAX_RATE, roundMoney } from "@/lib/constants";
+import { ProductImage } from "@/components/ProductImage";
 import { useEffect, useState } from "react";
 
 export default function CartPage() {
@@ -118,7 +118,7 @@ export default function CartPage() {
                     />
                   </label>
                   <div className="relative h-24 w-20 shrink-0 overflow-hidden bg-bone-warm">
-                    <Image
+                    <ProductImage
                       src={item.image}
                       alt={item.name}
                       fill

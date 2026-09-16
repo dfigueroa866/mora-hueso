@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { preserveProductText } from "@/lib/text-encoding";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -40,7 +41,7 @@ export async function GET(req: NextRequest) {
     orderBy: { name: "asc" },
   });
 
-  return NextResponse.json(products);
+  return NextResponse.json(products.map(preserveProductText));
 }
 
 export async function POST(req: NextRequest) {

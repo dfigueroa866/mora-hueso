@@ -7,13 +7,13 @@ import { FirstPurchaseFooter } from "@/components/FirstPurchaseFooter";
 import { FirstPurchasePromo } from "@/components/FirstPurchasePromo";
 
 const display = Fraunces({
-  subsets: ["latin"],
+  subsets: ["latin", "latin-ext"],
   variable: "--font-display",
   weight: ["400", "500", "600", "700"],
 });
 
 const sans = Sora({
-  subsets: ["latin"],
+  subsets: ["latin", "latin-ext"],
   variable: "--font-sans",
   weight: ["300", "400", "500", "600"],
 });
