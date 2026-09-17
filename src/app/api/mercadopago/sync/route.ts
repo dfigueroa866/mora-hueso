@@ -52,13 +52,15 @@ export async function POST(req: NextRequest) {
         ? await getPaymentById(paymentId)
         : await findLatestPaymentForOrder(order.id);
       if (payment?.status) {
+        const mpOrder =
+          "order" in payment ? payment.order : undefined;
         const updated = await applyMercadoPagoStatus(order.id, {
           id: payment.id || paymentId,
           status: payment.status,
           status_detail: payment.status_detail,
           payment_method_id: payment.payment_method_id,
           payment_type_id: payment.payment_type_id || paymentType,
-          order: payment.order,
+          order: mpOrder,
           merchantOrderId,
         });
         if (updated && updated.status !== "pending_payment") {

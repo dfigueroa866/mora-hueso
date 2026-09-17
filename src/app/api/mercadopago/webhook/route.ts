@@ -10,8 +10,7 @@ function headerValue(value: string | null) {
 function signatureOk(req: NextRequest, dataId: string) {
   const secret = process.env.MERCADOPAGO_WEBHOOK_SECRET?.trim();
   if (!secret) return true;
-  const validator = new WebhookSignatureValidator();
-  validator.validate({
+  WebhookSignatureValidator.validate({
     xSignature: headerValue(req.headers.get("x-signature")),
     xRequestId: headerValue(req.headers.get("x-request-id")),
     dataId,
