@@ -8,6 +8,7 @@ import {
   formatPrice,
   categoryLabel,
 } from "@/lib/constants";
+import { orderStatusLabel } from "@/lib/order-status";
 import { AdminPolicies } from "@/components/AdminPolicies";
 import { AdminSales } from "@/components/AdminSales";
 
@@ -36,6 +37,9 @@ type Order = {
   createdAt: string;
   billingName: string;
   billingEmail: string;
+  mpPaymentId?: string | null;
+  mpStatus?: string | null;
+  mpStatusDetail?: string | null;
   user?: { name: string; email: string } | null;
   items: { name: string; quantity: number; price: number }[];
 };
@@ -111,7 +115,7 @@ export default function AdminPage() {
   const router = useRouter();
   const [data, setData] = useState<Dashboard | null>(null);
   const [tab, setTab] = useState<
-    "inventory" | "sales" | "form" | "policies" | "alerts"
+    "inventory" | "orders" | "sales" | "form" | "policies" | "alerts"
   >("inventory");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -123,6 +127,14 @@ export default function AdminPage() {
   const [blobSyncing, setBlobSyncing] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    body: string;
+    confirmLabel: string;
+    busy?: boolean;
+    onConfirm: () => Promise<void>;
+  } | null>(null);
   const openedEdit = useRef(false);
   const openedVista = useRef(false);
 
@@ -140,6 +152,15 @@ export default function AdminPage() {
   useEffect(() => {
     load().catch(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!confirmDialog || confirmDialog.busy) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setConfirmDialog(null);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [confirmDialog]);
 
   useEffect(() => {
     if (!data) return;
@@ -255,34 +276,91 @@ export default function AdminPage() {
 
   async function removeSelected() {
     if (selectedIds.length === 0) return;
-    if (
-      !confirm(
-        `¿Desactivar ${selectedIds.length} producto${selectedIds.length === 1 ? "" : "s"}? Dejarán de mostrarse en la tienda.`
-      )
-    ) {
-      return;
-    }
-    setBulkDeleting(true);
-    setError("");
-    try {
-      const res = await fetch("/api/admin/products/bulk-delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: selectedIds }),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        setError(json.error || "No se pudieron desactivar");
-        return;
-      }
-      setMsg(`${json.deleted} producto(s) desactivados`);
-      setSelectedIds([]);
-      await load();
-    } catch {
-      setError("Error al desactivar productos");
-    } finally {
-      setBulkDeleting(false);
-    }
+    const ids = [...selectedIds];
+    const count = ids.length;
+    setConfirmDialog({
+      title: "Desactivar productos",
+      body: `¿Desactivar ${count} producto${count === 1 ? "" : "s"}? Dejarán de mostrarse en la tienda.`,
+      confirmLabel: "Desactivar",
+      onConfirm: async () => {
+        setBulkDeleting(true);
+        setError("");
+        try {
+          const res = await fetch("/api/admin/products/bulk-delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ids }),
+          });
+          const json = await res.json();
+          if (!res.ok) {
+            setError(json.error || "No se pudieron desactivar");
+            return;
+          }
+          setMsg(`${json.deleted} producto(s) desactivados`);
+          setSelectedIds([]);
+          await load();
+        } catch {
+          setError("Error al desactivar productos");
+        } finally {
+          setBulkDeleting(false);
+        }
+      },
+    });
+  }
+
+  async function deleteSelected() {
+    if (!deleteArmed || selectedIds.length === 0) return;
+    const ids = [...selectedIds];
+    const count = ids.length;
+    setConfirmDialog({
+      title: "Eliminar productos",
+      body: `¿Eliminar ${count} producto${count === 1 ? "" : "s"} de forma permanente? Los pedidos conservan el nombre, pero el producto ya no se podrá recuperar.`,
+      confirmLabel: "Eliminar",
+      onConfirm: async () => {
+        setBulkDeleting(true);
+        setError("");
+        try {
+          const res = await fetch("/api/admin/products/bulk-delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ids, permanent: true }),
+          });
+          const json = await res.json();
+          if (!res.ok) {
+            setError(json.error || "No se pudieron eliminar");
+            return;
+          }
+          setMsg(`${json.deleted} producto(s) eliminados`);
+          setSelectedIds([]);
+          await load();
+        } catch {
+          setError("Error al eliminar productos");
+        } finally {
+          setBulkDeleting(false);
+        }
+      },
+    });
+  }
+
+  async function deleteOne(p: Product) {
+    if (!deleteArmed) return;
+    setConfirmDialog({
+      title: "Eliminar producto",
+      body: `¿Eliminar “${p.name}” de forma permanente? Esta acción no se puede deshacer.`,
+      confirmLabel: "Eliminar",
+      onConfirm: async () => {
+        setError("");
+        const res = await fetch(`/api/products/${p.id}`, { method: "DELETE" });
+        if (!res.ok) {
+          const json = await res.json().catch(() => ({}));
+          setError(json.error || "No se pudo eliminar");
+          return;
+        }
+        setMsg(`“${p.name}” eliminado`);
+        setSelectedIds((prev) => prev.filter((id) => id !== p.id));
+        await load();
+      },
+    });
   }
 
   async function downloadCsvTemplate() {
@@ -521,6 +599,7 @@ export default function AdminPage() {
         {(
           [
             ["inventory", "Inventario"],
+            ["orders", "Pedidos"],
             ["sales", "Ventas"],
             ["alerts", "Alertas"],
             ["policies", "Políticas"],
@@ -551,6 +630,47 @@ export default function AdminPage() {
         <p className="rounded-sm border border-berry/30 bg-berry/10 px-3 py-2 text-sm text-berry">
           {error}
         </p>
+      )}
+
+      {tab === "orders" && (
+        <div className="border border-ink/10 bg-white/60 p-5">
+          <h2 className="font-display text-xl">Pedidos</h2>
+          <p className="mt-1 text-sm text-ink-muted">
+            Historial de compras y el estado que regresó Mercado Pago.
+          </p>
+          {data.orders.length === 0 ? (
+            <p className="mt-4 text-sm text-ink-muted">Aún no hay pedidos.</p>
+          ) : (
+            <ul className="mt-4 divide-y divide-ink/10 text-sm">
+              {data.orders.map((order) => (
+                <li
+                  key={order.id}
+                  className="flex flex-wrap items-start justify-between gap-3 py-3"
+                >
+                  <div>
+                    <p className="font-medium">{order.trackingNumber}</p>
+                    <p className="text-ink-muted">
+                      {order.billingName}
+                      {order.billingEmail ? ` · ${order.billingEmail}` : ""} ·{" "}
+                      {orderStatusLabel(order.status)}
+                      {order.mpStatus ? ` · ${order.mpStatus}` : ""}
+                      {order.mpPaymentId ? ` · MP ${order.mpPaymentId}` : ""}
+                    </p>
+                    <p className="mt-1 text-xs text-ink-muted">
+                      {new Date(order.createdAt).toLocaleString("es-MX")}
+                      {order.items?.length
+                        ? ` · ${order.items
+                            .map((i) => `${i.name} ×${i.quantity}`)
+                            .join(", ")}`
+                        : ""}
+                    </p>
+                  </div>
+                  <p className="font-medium">{formatPrice(order.total)}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
 
       {tab === "inventory" && (
@@ -616,17 +736,44 @@ export default function AdminPage() {
               {selectedIds.length > 0
                 ? ` · ${selectedIds.length} seleccionado${selectedIds.length === 1 ? "" : "s"}`
                 : ""}
+              {deleteArmed ? " · eliminar activado" : ""}
             </p>
-            <button
-              type="button"
-              className="btn-ghost w-full px-3 py-1.5 text-xs disabled:opacity-40 sm:w-auto"
-              disabled={selectedIds.length === 0 || bulkDeleting}
-              onClick={removeSelected}
-            >
-              {bulkDeleting
-                ? "Desactivando…"
-                : `Desactivar seleccionados${selectedIds.length ? ` (${selectedIds.length})` : ""}`}
-            </button>
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+              <button
+                type="button"
+                className={`btn-ghost w-full px-3 py-1.5 text-xs sm:w-auto ${
+                  deleteArmed ? "border-berry text-berry" : ""
+                }`}
+                onClick={() => {
+                  setDeleteArmed((on) => !on);
+                  if (deleteArmed) setSelectedIds([]);
+                }}
+              >
+                {deleteArmed ? "Desactivar eliminar" : "Activar eliminar"}
+              </button>
+              <button
+                type="button"
+                className="btn-ghost w-full px-3 py-1.5 text-xs disabled:opacity-40 sm:w-auto"
+                disabled={selectedIds.length === 0 || bulkDeleting}
+                onClick={removeSelected}
+              >
+                {bulkDeleting
+                  ? "Procesando…"
+                  : `Desactivar seleccionados${selectedIds.length ? ` (${selectedIds.length})` : ""}`}
+              </button>
+              {deleteArmed && (
+                <button
+                  type="button"
+                  className="w-full bg-berry px-3 py-1.5 text-xs text-white disabled:opacity-40 sm:w-auto"
+                  disabled={selectedIds.length === 0 || bulkDeleting}
+                  onClick={deleteSelected}
+                >
+                  {bulkDeleting
+                    ? "Eliminando…"
+                    : `Eliminar seleccionados${selectedIds.length ? ` (${selectedIds.length})` : ""}`}
+                </button>
+              )}
+            </div>
           </div>
 
           <ul className="divide-y divide-ink/10 md:hidden">
@@ -643,7 +790,7 @@ export default function AdminPage() {
                     <input
                       type="checkbox"
                       className="mt-1 h-4 w-4 accent-berry"
-                      disabled={!p.active}
+                      disabled={!p.active && !deleteArmed}
                       checked={checked}
                       onChange={() => {
                         setSelectedIds((prev) =>
@@ -712,6 +859,15 @@ export default function AdminPage() {
                         >
                           {p.active ? "Desactivar" : "Activar"}
                         </button>
+                        {deleteArmed && (
+                          <button
+                            type="button"
+                            className="btn-ghost px-3 py-2 text-xs text-berry"
+                            onClick={() => deleteOne(p)}
+                          >
+                            Eliminar
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -729,15 +885,17 @@ export default function AdminPage() {
                       type="checkbox"
                       className="h-3.5 w-3.5 accent-berry"
                       checked={
-                        data.products.filter((p) => p.active).length > 0 &&
+                        data.products.length > 0 &&
                         data.products
-                          .filter((p) => p.active)
+                          .filter((p) => deleteArmed || p.active)
                           .every((p) => selectedIds.includes(p.id))
                       }
                       onChange={(e) => {
                         if (e.target.checked) {
                           setSelectedIds(
-                            data.products.filter((p) => p.active).map((p) => p.id)
+                            data.products
+                              .filter((p) => deleteArmed || p.active)
+                              .map((p) => p.id)
                           );
                         } else {
                           setSelectedIds([]);
@@ -769,7 +927,7 @@ export default function AdminPage() {
                         <input
                           type="checkbox"
                           className="h-3.5 w-3.5 accent-berry"
-                          disabled={!p.active}
+                          disabled={!p.active && !deleteArmed}
                           checked={checked}
                           onChange={() => {
                             setSelectedIds((prev) =>
@@ -842,6 +1000,18 @@ export default function AdminPage() {
                         >
                           {p.active ? "Desactivar" : "Activar"}
                         </button>
+                        {deleteArmed && (
+                          <>
+                            <span className="mx-1.5 text-ink/20">|</span>
+                            <button
+                              type="button"
+                              className="text-[12px] font-medium text-berry hover:underline"
+                              onClick={() => deleteOne(p)}
+                            >
+                              Eliminar
+                            </button>
+                          </>
+                        )}
                       </td>
                     </tr>
                   );
@@ -1125,6 +1295,56 @@ export default function AdminPage() {
             </button>
           </div>
         </form>
+      )}
+      {confirmDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="admin-confirm-title"
+          onClick={() => {
+            if (!confirmDialog.busy) setConfirmDialog(null);
+          }}
+        >
+          <div
+            className="w-full max-w-md border border-ink/10 bg-bone p-6 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2
+              id="admin-confirm-title"
+              className="font-display text-2xl font-semibold text-ink"
+            >
+              {confirmDialog.title}
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-ink-muted">
+              {confirmDialog.body}
+            </p>
+            <div className="mt-6 flex flex-wrap justify-end gap-3">
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={confirmDialog.busy}
+                onClick={() => setConfirmDialog(null)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={confirmDialog.busy}
+                onClick={() => {
+                  const action = confirmDialog.onConfirm;
+                  setConfirmDialog((current) =>
+                    current ? { ...current, busy: true } : current
+                  );
+                  void action().finally(() => setConfirmDialog(null));
+                }}
+              >
+                {confirmDialog.busy ? "Procesando…" : confirmDialog.confirmLabel}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useCart } from "@/lib/cart-store";
+import { cartSubtotal, useCart } from "@/lib/cart-store";
 import {
   SHIPPING_METHODS,
   formatPrice,
@@ -25,7 +25,6 @@ type Address = {
 export default function ShippingPage() {
   const router = useRouter();
   const items = useCart((s) => s.items);
-  const subtotal = useCart((s) => s.subtotal);
   const [mounted, setMounted] = useState(false);
   const [method, setMethod] = useState<"standard" | "express">("standard");
   const [addresses, setAddresses] = useState<Address[]>([]);
@@ -80,7 +79,7 @@ export default function ShippingPage() {
   }
 
   const shipping = SHIPPING_METHODS.find((m) => m.value === method)!;
-  const sub = subtotal();
+  const sub = roundMoney(cartSubtotal(items));
   const tax = roundMoney(sub * TAX_RATE);
 
   function onSubmit(e: FormEvent) {

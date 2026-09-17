@@ -51,10 +51,12 @@ export function categoryLabel(value: string) {
 }
 
 export function formatPrice(amount: number) {
+  const value = Number(amount);
+  if (!Number.isFinite(value)) return "—";
   return new Intl.NumberFormat("es-MX", {
     style: "currency",
     currency: "MXN",
-  }).format(amount);
+  }).format(value);
 }
 
 export function roundMoney(n: number) {

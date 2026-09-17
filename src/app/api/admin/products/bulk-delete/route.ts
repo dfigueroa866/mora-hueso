@@ -5,6 +5,7 @@ import { z } from "zod";
 
 const bodySchema = z.object({
   ids: z.array(z.string().min(1)).min(1, "Selecciona al menos un producto"),
+  permanent: z.boolean().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -19,6 +20,17 @@ export async function POST(req: NextRequest) {
       { error: "IDs inválidos", details: parsed.error.flatten() },
       { status: 400 }
     );
+  }
+
+  if (parsed.data.permanent) {
+    const result = await prisma.product.deleteMany({
+      where: { id: { in: parsed.data.ids } },
+    });
+    return NextResponse.json({
+      ok: true,
+      deleted: result.count,
+      permanent: true,
+    });
   }
 
   const result = await prisma.product.updateMany({

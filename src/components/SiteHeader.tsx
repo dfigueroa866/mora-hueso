@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { ShoppingBag, Menu, X } from "lucide-react";
-import { useCart } from "@/lib/cart-store";
+import { cartCount, useCart } from "@/lib/cart-store";
 import { cn } from "@/lib/utils";
 
 type User = {
@@ -22,9 +22,7 @@ const links = [
 
 export function SiteHeader() {
   const pathname = usePathname();
-  const count = useCart((s) =>
-    (s.items ?? []).reduce((n, i) => n + i.quantity, 0)
-  );
+  const count = useCart((s) => cartCount(s.items ?? []));
   const [user, setUser] = useState<User>(null);
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);

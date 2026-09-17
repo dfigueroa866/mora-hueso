@@ -30,6 +30,16 @@ export function ProductDetailClient({ product }: { product: Product }) {
   const addItem = useCart((s) => s.addItem);
   const router = useRouter();
   const available = isAvailable(product.stock);
+  const maxQty = Math.max(product.stock, 1);
+
+  function setValidQty(raw: string) {
+    const n = Math.floor(Number(raw));
+    if (!raw.trim() || !Number.isFinite(n) || n < 1) {
+      setQty(1);
+      return;
+    }
+    setQty(Math.min(n, maxQty));
+  }
   const nutrition = (() => {
     try {
       const parsed = JSON.parse(product.nutrition) as Record<string, string>;
@@ -40,7 +50,12 @@ export function ProductDetailClient({ product }: { product: Product }) {
   })();
 
   function addToCart() {
-    if (!available) return;
+    const amount = Math.floor(qty);
+    if (!available || amount < 1) {
+      setQty(1);
+      setMsg("");
+      return;
+    }
     addItem(
       {
         productId: product.id,
@@ -50,7 +65,7 @@ export function ProductDetailClient({ product }: { product: Product }) {
         packageSize: product.packageSize,
         stock: product.stock,
       },
-      qty
+      amount
     );
     setMsg("Agregado al carrito");
     setTimeout(() => setMsg(""), 2000);
@@ -109,22 +124,24 @@ export function ProductDetailClient({ product }: { product: Product }) {
             id="qty"
             type="number"
             min={1}
-            max={Math.max(product.stock, 1)}
+            max={maxQty}
+            step={1}
             value={qty}
             disabled={!available}
-            onChange={(e) => setQty(Number(e.target.value))}
+            onChange={(e) => setValidQty(e.target.value)}
+            onBlur={() => setValidQty(String(qty))}
             className="field w-20"
           />
           <button
             className="btn-primary"
-            disabled={!available}
+            disabled={!available || qty < 1}
             onClick={addToCart}
           >
             Agregar al carrito
           </button>
           <button
             className="btn-ghost"
-            disabled={!available}
+            disabled={!available || qty < 1}
             onClick={() => {
               addToCart();
               router.push("/carrito");

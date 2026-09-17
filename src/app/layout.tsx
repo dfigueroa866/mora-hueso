@@ -5,6 +5,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { FirstPurchaseFooter } from "@/components/FirstPurchaseFooter";
 import { FirstPurchasePromo } from "@/components/FirstPurchasePromo";
+import { PaymentReturnSync } from "@/components/PaymentReturnSync";
 
 const display = Fraunces({
   subsets: ["latin", "latin-ext"],
@@ -38,6 +39,7 @@ export default function RootLayout({
   return (
     <html lang="es" className={`${display.variable} ${sans.variable}`}>
       <body className="min-h-screen font-sans antialiased">
+        <PaymentReturnSync />
         <SiteHeader />
         <main className="min-h-[70vh]">{children}</main>
         <SiteFooter />

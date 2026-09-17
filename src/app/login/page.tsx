@@ -99,9 +99,11 @@ export default function LoginPage() {
           ¿Olvidaste tu contraseña?
         </Link>
       </form>
-      <p className="mt-8 border-t border-ink/10 pt-4 text-xs text-ink-muted">
-        Demo: admin@morahueso.com / Admin123! · cliente@demo.com / Cliente123!
-      </p>
+      {process.env.NODE_ENV === "development" && (
+        <p className="mt-8 border-t border-ink/10 pt-4 text-xs text-ink-muted">
+          Demo: admin@morahueso.com / Admin123! · cliente@demo.com / Cliente123!
+        </p>
+      )}
     </div>
   );
 }

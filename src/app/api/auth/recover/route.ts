@@ -64,11 +64,17 @@ export async function POST(req: NextRequest) {
     data: { resetToken, resetExpires },
   });
 
+  const isDev = process.env.NODE_ENV === "development";
   return NextResponse.json({
     ok: true,
-    message:
-      "Si el correo existe, enviamos instrucciones. (Demo: usa el token abajo)",
-    demoToken: resetToken,
-    demoResetUrl: `/recuperar?token=${resetToken}`,
+    message: isDev
+      ? "Si el correo existe, enviamos instrucciones. (Demo: usa el token abajo)"
+      : "Si el correo existe, enviamos instrucciones.",
+    ...(isDev
+      ? {
+          demoToken: resetToken,
+          demoResetUrl: `/recuperar?token=${resetToken}`,
+        }
+      : {}),
   });
 }

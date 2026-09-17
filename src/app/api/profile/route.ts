@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { claimGuestOrders, syncPendingMercadoPagoOrders } from "@/lib/orders";
 import { profileSchema, addressSchema } from "@/lib/validators";
 
 export async function GET() {
@@ -8,6 +9,9 @@ export async function GET() {
   if (!user) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
+
+  await claimGuestOrders(user);
+  await syncPendingMercadoPagoOrders();
 
   const full = await prisma.user.findUnique({
     where: { id: user.id },

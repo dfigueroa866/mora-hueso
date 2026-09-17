@@ -1,16 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useCart } from "@/lib/cart-store";
+import { cartSubtotal, useCart } from "@/lib/cart-store";
 import { formatPrice, TAX_RATE, roundMoney } from "@/lib/constants";
 import { ProductImage } from "@/components/ProductImage";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export default function CartPage() {
-  const { items, setQuantity, removeItem, removeItems, clear, subtotal } =
-    useCart();
+  const items = useCart((s) => (Array.isArray(s.items) ? s.items : []));
+  const setQuantity = useCart((s) => s.setQuantity);
+  const removeItem = useCart((s) => s.removeItem);
+  const removeItems = useCart((s) => s.removeItems);
+  const clear = useCart((s) => s.clear);
+  const syncCatalog = useCart((s) => s.syncCatalog);
   const [mounted, setMounted] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
+  const productIds = items.map((item) => item.productId).join(",");
 
   useEffect(() => setMounted(true), []);
 
@@ -20,12 +25,33 @@ export default function CartPage() {
     );
   }, [items]);
 
+  useEffect(() => {
+    if (!mounted || !productIds) return;
+    let cancelled = false;
+    fetch("/api/products")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((catalog) => {
+        if (cancelled || !Array.isArray(catalog) || catalog.length === 0) return;
+        syncCatalog(catalog);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [mounted, productIds, syncCatalog]);
+
+  const sub = useMemo(() => roundMoney(cartSubtotal(items)), [items]);
+  const tax = roundMoney(sub * TAX_RATE);
+
   if (!mounted) {
     return <div className="section-pad text-ink-muted">Cargando carrito…</div>;
   }
 
-  const sub = subtotal();
-  const tax = roundMoney(sub * TAX_RATE);
+  if (sessionStorage.getItem("mh_confirming") === "1") {
+    return (
+      <div className="section-pad text-ink-muted">Confirmando pago…</div>
+    );
+  }
   const allSelected = items.length > 0 && selected.length === items.length;
 
   function toggleOne(productId: string) {
@@ -154,6 +180,7 @@ export default function CartPage() {
                         className="field w-20"
                       />
                       <button
+                        type="button"
                         className="text-sm text-berry hover:underline"
                         onClick={() => removeItem(item.productId)}
                       >
@@ -169,7 +196,12 @@ export default function CartPage() {
 
         <aside className="h-fit border border-ink/10 bg-white/60 p-6">
           <h2 className="font-display text-xl">Resumen</h2>
-          <dl className="mt-4 space-y-2 text-sm">
+          <dl
+            className="mt-4 space-y-2 text-sm"
+            key={items
+              .map((item) => `${item.productId}:${item.quantity}:${item.price}`)
+              .join("|")}
+          >
             <div className="flex justify-between">
               <dt className="text-ink-muted">Subtotal</dt>
               <dd>{formatPrice(sub)}</dd>

@@ -106,9 +106,14 @@ model Order {
   billingEmail    String
   cardLast4       String?
   paymentProvider String      @default("mercadopago")
-  mpPreferenceId  String?
-  mpPaymentId     String?
-  paidAt          DateTime?
+  mpPreferenceId    String?
+  mpPaymentId       String?
+  mpStatus          String?
+  mpStatusDetail    String?
+  mpPaymentMethod   String?
+  mpMerchantOrderId String?
+  mpNotifiedAt      DateTime?
+  paidAt            DateTime?
   createdAt       DateTime    @default(now())
   items           OrderItem[]
 }

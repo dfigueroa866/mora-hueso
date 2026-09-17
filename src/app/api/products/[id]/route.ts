@@ -46,9 +46,12 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
 
-  await prisma.product.update({
-    where: { id: params.id },
-    data: { active: false },
-  });
+  try {
+    await prisma.product.delete({
+      where: { id: params.id },
+    });
+  } catch {
+    return NextResponse.json({ error: "No se pudo eliminar" }, { status: 400 });
+  }
   return NextResponse.json({ ok: true });
 }

@@ -18,6 +18,7 @@ import {
   isFirstPurchaseEmail,
   normalizeEmail,
 } from "@/lib/first-purchase";
+import { markOrderCancelled, syncPendingMercadoPagoOrders } from "@/lib/orders";
 
 function orderPayload(
   order: {
@@ -118,6 +119,20 @@ export async function POST(req: NextRequest) {
   });
   const trackingNumber = generateTrackingNumber();
 
+  await syncPendingMercadoPagoOrders();
+
+  const stale = await prisma.order.findMany({
+    where: {
+      status: "pending_payment",
+      billingEmail,
+      mpPaymentId: null,
+    },
+    select: { id: true },
+  });
+  for (const old of stale) {
+    await markOrderCancelled(old.id);
+  }
+
   try {
     const order = await prisma.$transaction(async (tx) => {
       for (const item of lineItems) {
@@ -181,6 +196,7 @@ export async function POST(req: NextRequest) {
                 remaining = roundMoney(remaining - share);
               }
               return {
+                id: item.sku || item.productId,
                 title: item.name,
                 quantity: 1,
                 unitPrice: share,
@@ -188,6 +204,7 @@ export async function POST(req: NextRequest) {
             });
           })()
         : lineItems.map((i) => ({
+            id: i.sku || i.productId,
             title: i.name,
             quantity: i.quantity,
             unitPrice: i.price,
@@ -195,9 +212,12 @@ export async function POST(req: NextRequest) {
 
     const mpItems = [
       ...productMpItems,
-      ...(tax > 0 ? [{ title: "IVA", quantity: 1, unitPrice: tax }] : []),
+      ...(tax > 0
+        ? [{ id: "iva", title: "IVA", quantity: 1, unitPrice: tax }]
+        : []),
       {
-        title: `Envío ${shipping.label}`,
+        id: "envio",
+        title: `Envio ${shipping.label}`,
         quantity: 1,
         unitPrice: shippingCost,
       },
@@ -212,6 +232,8 @@ export async function POST(req: NextRequest) {
           items: mpItems,
           payerEmail: billingEmail,
           payerName: data.billingName,
+          payerZip: data.shipPostalCode,
+          payerStreet: data.shipStreet,
           baseUrl,
         });
 

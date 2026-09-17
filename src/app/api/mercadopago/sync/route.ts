@@ -1,17 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import {
+  findLatestPaymentForOrder,
   getPaymentById,
   hasMercadoPagoToken,
-  mapMpStatusToOrderStatus,
 } from "@/lib/mercadopago";
-import { markOrderCancelled, markOrderPaid } from "@/lib/orders";
+import {
+  applyMercadoPagoStatus,
+  markOrderCancelled,
+  markOrderPaid,
+} from "@/lib/orders";
 
 /** Sync order status after returning from Mercado Pago / demo checkout. */
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const trackingNumber = String(body.trackingNumber || "");
   const paymentId = body.paymentId ? String(body.paymentId) : null;
+  const merchantOrderId = body.merchantOrderId
+    ? String(body.merchantOrderId)
+    : null;
+  const paymentType = body.paymentType ? String(body.paymentType) : null;
   const demoStatus = body.demoStatus ? String(body.demoStatus) : null;
 
   if (!trackingNumber) {
@@ -38,30 +46,34 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Mercado Pago: fetch payment if we have token + payment id
-  if (hasMercadoPagoToken() && paymentId) {
+  if (hasMercadoPagoToken()) {
     try {
-      const payment = await getPaymentById(paymentId);
-      const next = mapMpStatusToOrderStatus(payment.status);
-      if (next === "paid") {
-        const updated = await markOrderPaid({
-          orderId: order.id,
-          mpPaymentId: String(payment.id || paymentId),
+      const payment = paymentId
+        ? await getPaymentById(paymentId)
+        : await findLatestPaymentForOrder(order.id);
+      if (payment?.status) {
+        const updated = await applyMercadoPagoStatus(order.id, {
+          id: payment.id || paymentId,
+          status: payment.status,
+          status_detail: payment.status_detail,
+          payment_method_id: payment.payment_method_id,
+          payment_type_id: payment.payment_type_id || paymentType,
+          order: payment.order,
+          merchantOrderId,
         });
-        return NextResponse.json({ order: updated });
-      }
-      if (next === "cancelled") {
-        const updated = await markOrderCancelled(order.id);
-        return NextResponse.json({ order: updated });
+        if (updated && updated.status !== "pending_payment") {
+          return NextResponse.json({ order: updated });
+        }
       }
     } catch (err) {
       console.error("sync payment failed", err);
     }
   }
 
-  // Fallback: query params status from MP redirect
+  // Solo confiar en el query de retorno si viene el id de pago de Mercado Pago
+  // (o en el checkout demo). Una URL con status=approved no basta para cobrar.
   const statusHint = body.status ? String(body.status) : null;
-  if (statusHint === "approved") {
+  if (statusHint === "approved" && paymentId) {
     const updated = await markOrderPaid({
       orderId: order.id,
       mpPaymentId: paymentId,

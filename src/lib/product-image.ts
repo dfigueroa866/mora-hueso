@@ -31,7 +31,8 @@ function driveFileId(src: string): string | null {
  * and flood the browser with failed requests). Treat them as missing so the
  * page stays up until Blob / local URLs are set.
  */
-export function normalizeProductImageSrc(src: string): string {
+export function normalizeProductImageSrc(src: unknown): string {
+  if (typeof src !== "string") return "";
   const raw = src.trim();
   if (!raw) return raw;
   if (driveFileId(raw)) return "";

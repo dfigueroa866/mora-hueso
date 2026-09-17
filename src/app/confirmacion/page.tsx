@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/constants";
+import { useCart } from "@/lib/cart-store";
 
 type OrderView = {
   id: string;
@@ -19,6 +20,11 @@ type OrderView = {
   emailSentTo?: string;
   firstPurchaseDiscount?: boolean;
   items: { name: string; quantity: number; price: number }[];
+  mpPaymentId?: string | null;
+  mpStatus?: string | null;
+  mpStatusDetail?: string | null;
+  mpPaymentMethod?: string | null;
+  mpMerchantOrderId?: string | null;
 };
 
 function ConfirmationInner() {
@@ -26,11 +32,26 @@ function ConfirmationInner() {
   const router = useRouter();
   const [order, setOrder] = useState<OrderView | null>(null);
   const [loading, setLoading] = useState(true);
+  const clearCart = useCart((s) => s.clear);
 
   const tracking = params.get("t") || "";
   const statusHint = params.get("status") || params.get("collection_status") || "";
   const paymentId =
     params.get("payment_id") || params.get("collection_id") || "";
+  const merchantOrderId = params.get("merchant_order_id") || "";
+  const paymentType = params.get("payment_type") || "";
+
+  useEffect(() => {
+    sessionStorage.removeItem("mh_confirming");
+  }, []);
+
+  useEffect(() => {
+    if (!order || order.status !== "paid" || !window.opener) return;
+    window.opener.postMessage(
+      { type: "mh-mp-paid", tracking: order.trackingNumber },
+      window.location.origin
+    );
+  }, [order]);
 
   useEffect(() => {
     async function run() {
@@ -58,6 +79,8 @@ function ConfirmationInner() {
             body: JSON.stringify({
               trackingNumber: t,
               paymentId: paymentId || undefined,
+              merchantOrderId: merchantOrderId || undefined,
+              paymentType: paymentType || undefined,
               status: statusHint || undefined,
             }),
           });
@@ -68,6 +91,13 @@ function ConfirmationInner() {
               emailSentTo: syncData.order.billingEmail,
             });
             sessionStorage.setItem("mh_order", JSON.stringify(syncData.order));
+            const finished =
+              syncData.order.status === "paid" ||
+              syncData.order.status === "cancelled";
+            if (finished) {
+              clearCart();
+              sessionStorage.removeItem("mh_shipping");
+            }
             setLoading(false);
             return;
           }
@@ -95,7 +125,7 @@ function ConfirmationInner() {
       }
     }
     void run();
-  }, [tracking, statusHint, paymentId]);
+  }, [tracking, statusHint, paymentId, merchantOrderId, paymentType, clearCart]);
 
   if (loading) {
     return <div className="section-pad text-ink-muted">Confirmando pago…</div>;
@@ -152,6 +182,15 @@ function ConfirmationInner() {
           Estado: <span className="text-ink">{order.statusLabel}</span>
         </p>
       )}
+      {order?.mpPaymentId && (
+        <p className="mt-1 text-sm text-ink-muted">
+          Operación Mercado Pago:{" "}
+          <span className="text-ink">{order.mpPaymentId}</span>
+          {order.mpStatus ? ` · ${order.mpStatus}` : ""}
+          {order.mpStatusDetail ? ` (${order.mpStatusDetail})` : ""}
+          {order.mpPaymentMethod ? ` · ${order.mpPaymentMethod}` : ""}
+        </p>
+      )}
       {order?.emailSentTo && isPaid && (
         <p className="mt-2 text-sm text-ink-muted">
           Enviaremos el resumen a{" "}
@@ -176,7 +215,7 @@ function ConfirmationInner() {
         <div className="mt-8 border border-ink/10 bg-white/60 p-6 animate-scale-in">
           <h2 className="font-display text-xl">Resumen</h2>
           <ul className="mt-4 space-y-2 text-sm">
-            {order.items.map((i, idx) => (
+            {(order.items ?? []).map((i, idx) => (
               <li key={idx} className="flex justify-between">
                 <span>
                   {i.name} × {i.quantity}

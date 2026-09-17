@@ -1,8 +1,9 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useCart } from "@/lib/cart-store";
+import { useRouter } from "next/navigation";
+import { cartSubtotal, useCart } from "@/lib/cart-store";
 import {
   SHIPPING_METHODS,
   formatPrice,
@@ -21,11 +22,48 @@ type ShippingData = {
   shippingMethod: "standard" | "express";
 };
 
+/**
+ * Pop-up centrado al marco de Checkout Pro (dos columnas: pago + detalle).
+ * Sin document.write: eso dejaba el botón Pagar deshabilitado.
+ */
+function openPayWindow() {
+  const availW = window.screen.availWidth;
+  const availH = window.screen.availHeight;
+  const width = Math.min(1024, Math.max(720, availW - 48));
+  const height = Math.min(820, Math.max(640, availH - 48));
+  const left = Math.max(0, Math.round((availW - width) / 2));
+  const top = Math.max(0, Math.round((availH - height) / 2));
+  return window.open(
+    "about:blank",
+    "mh-mp-checkout",
+    [
+      "popup=yes",
+      `width=${width}`,
+      `height=${height}`,
+      `left=${left}`,
+      `top=${top}`,
+      "resizable=yes",
+      "scrollbars=yes",
+      "location=yes",
+      "menubar=no",
+      "toolbar=no",
+      "status=no",
+    ].join(",")
+  );
+}
+
 export default function CheckoutPage() {
-  const { items, clear, subtotal } = useCart();
+  const router = useRouter();
+  const items = useCart((s) => (Array.isArray(s.items) ? s.items : []));
+  const clearCart = useCart((s) => s.clear);
+  const payPopup = useRef<Window | null>(null);
+  const paidLock = useRef(false);
+  const pollRef = useRef<number | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
   const [shipping, setShipping] = useState<ShippingData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [waitingPopup, setWaitingPopup] = useState(false);
   const [error, setError] = useState("");
   const [firstPurchase, setFirstPurchase] = useState(false);
   const [checkingEmail, setCheckingEmail] = useState(false);
@@ -37,7 +75,15 @@ export default function CheckoutPage() {
   useEffect(() => {
     setMounted(true);
     const raw = sessionStorage.getItem("mh_shipping");
-    if (raw) setShipping(JSON.parse(raw));
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as ShippingData;
+        if (parsed && typeof parsed.street === "string") setShipping(parsed);
+        else sessionStorage.removeItem("mh_shipping");
+      } catch {
+        sessionStorage.removeItem("mh_shipping");
+      }
+    }
     fetch("/api/auth/me")
       .then((r) => r.json())
       .then((d) => {
@@ -84,7 +130,7 @@ export default function CheckoutPage() {
   const method = shipping
     ? SHIPPING_METHODS.find((m) => m.value === shipping.shippingMethod)!
     : null;
-  const sub = subtotal();
+  const sub = useMemo(() => roundMoney(cartSubtotal(items)), [items]);
   const discount = useMemo(
     () =>
       firstPurchase
@@ -96,8 +142,152 @@ export default function CheckoutPage() {
   const tax = roundMoney(taxable * TAX_RATE);
   const total = method ? roundMoney(taxable + tax + method.cost) : 0;
 
-  if (!mounted) {
-    return <div className="section-pad text-ink-muted">Cargando…</div>;
+  function completePaid(tracking: string) {
+    if (paidLock.current || !tracking) return;
+    paidLock.current = true;
+    if (pollRef.current) {
+      window.clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    sessionStorage.setItem("mh_confirming", "1");
+    setRedirecting(true);
+    setWaitingPopup(false);
+    try {
+      payPopup.current?.close();
+    } catch {
+      /* la ventana de Mercado Pago ya se cerró */
+    }
+    sessionStorage.removeItem("mh_shipping");
+    sessionStorage.removeItem("mh_order");
+    clearCart();
+    router.replace(
+      `/confirmacion?status=approved&t=${encodeURIComponent(tracking)}`
+    );
+  }
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) window.clearInterval(pollRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    function onPaid(event: MessageEvent) {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type !== "mh-mp-paid") return;
+      completePaid(String(event.data.tracking || ""));
+    }
+    window.addEventListener("message", onPaid);
+    return () => window.removeEventListener("message", onPaid);
+  }, [router, clearCart]);
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError("");
+    const popup = openPayWindow();
+    if (!popup) {
+      setError(
+        "El navegador bloqueó la ventana de pago. Permite pop-ups para este sitio e inténtalo de nuevo."
+      );
+      return;
+    }
+    payPopup.current = popup;
+    setLoading(true);
+    setWaitingPopup(true);
+    try {
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: items.map((i) => ({
+            productId: i.productId,
+            quantity: i.quantity,
+          })),
+          shippingMethod: shipping!.shippingMethod,
+          shipStreet: shipping!.street,
+          shipCity: shipping!.city,
+          shipState: shipping!.state,
+          shipPostalCode: shipping!.postalCode,
+          shipCountry: shipping!.country,
+          shipReferences: shipping!.references,
+          billingName: form.billingName,
+          billingEmail: form.billingEmail,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        popup.close();
+        setWaitingPopup(false);
+        setError(data.error || "No se pudo iniciar el pago");
+        return;
+      }
+      sessionStorage.setItem("mh_order", JSON.stringify(data.order));
+      const checkoutUrl = String(data.checkoutUrl || "");
+      const allowed =
+        /^https:\/\/([a-z0-9-]+\.)*mercadopago\.com/i.test(checkoutUrl) ||
+        checkoutUrl.startsWith(window.location.origin);
+      if (!allowed) {
+        popup.close();
+        setWaitingPopup(false);
+        setError("Mercado Pago no devolvió un enlace de pago válido.");
+        return;
+      }
+      popup.location.href = checkoutUrl;
+      const tracking = String(data.order?.trackingNumber || "");
+      if (pollRef.current) window.clearInterval(pollRef.current);
+      pollRef.current = window.setInterval(async () => {
+        let closed = false;
+        try {
+          closed = popup.closed;
+        } catch {
+          closed = true;
+        }
+        if (!tracking) {
+          if (closed && pollRef.current) {
+            window.clearInterval(pollRef.current);
+            pollRef.current = null;
+            setWaitingPopup(false);
+          }
+          return;
+        }
+        try {
+          const sync = await fetch("/api/mercadopago/sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ trackingNumber: tracking }),
+          });
+          const syncData = await sync.json();
+          if (syncData.order?.status === "paid") {
+            completePaid(tracking);
+            return;
+          }
+        } catch {
+          /* reintenta en el siguiente ciclo */
+        }
+        if (closed && pollRef.current) {
+          window.clearInterval(pollRef.current);
+          pollRef.current = null;
+          setWaitingPopup(false);
+        }
+      }, 1200);
+    } catch {
+      popup.close();
+      setWaitingPopup(false);
+      setError("Error de red. Intenta de nuevo.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const percent = Math.round(FIRST_PURCHASE_DISCOUNT_RATE * 100);
+  const confirming =
+    redirecting ||
+    (mounted && sessionStorage.getItem("mh_confirming") === "1");
+
+  if (!mounted || confirming) {
+    return (
+      <div className="section-pad text-ink-muted">Confirmando pago…</div>
+    );
   }
 
   if (items.length === 0) {
@@ -125,52 +315,6 @@ export default function CheckoutPage() {
       </div>
     );
   }
-
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-    try {
-      const res = await fetch("/api/orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: items.map((i) => ({
-            productId: i.productId,
-            quantity: i.quantity,
-          })),
-          shippingMethod: shipping!.shippingMethod,
-          shipStreet: shipping!.street,
-          shipCity: shipping!.city,
-          shipState: shipping!.state,
-          shipPostalCode: shipping!.postalCode,
-          shipCountry: shipping!.country,
-          shipReferences: shipping!.references,
-          billingName: form.billingName,
-          billingEmail: form.billingEmail,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "No se pudo iniciar el pago");
-        return;
-      }
-      sessionStorage.setItem("mh_order", JSON.stringify(data.order));
-      sessionStorage.removeItem("mh_shipping");
-      clear();
-      if (data.checkoutUrl) {
-        window.location.href = data.checkoutUrl;
-        return;
-      }
-      setError("No se recibió URL de pago");
-    } catch {
-      setError("Error de red. Intenta de nuevo.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  const percent = Math.round(FIRST_PURCHASE_DISCOUNT_RATE * 100);
 
   return (
     <div className="section-pad">
@@ -247,15 +391,31 @@ export default function CheckoutPage() {
           <div className="border border-[#009EE3]/20 bg-[#009EE3]/5 p-4 text-sm text-ink/80">
             <p className="font-medium text-ink">Mercado Pago</p>
             <p className="mt-1 text-ink-muted">
-              Te redirigiremos a Mercado Pago para completar el cobro con
-              tarjeta, saldo o efectivo. No almacenamos datos de tu tarjeta.
+              Al pagar se abre una ventana de Mercado Pago, del tamaño de su
+              checkout. Esta página se queda abierta para registrar el
+              resultado. No almacenamos datos de tu tarjeta.
+            </p>
+            <p className="mt-2 text-ink-muted">
+              En pruebas, abre esta tienda en incógnito y entra a Mercado Pago
+              con la cuenta compradora, no con la vendedora. Si pagas con la
+              misma cuenta que creó el cobro, el botón Pagar queda gris.
             </p>
           </div>
 
           {error && <p className="text-sm text-berry">{error}</p>}
-          <button type="submit" className="btn-primary" disabled={loading}>
+          {waitingPopup && (
+            <p className="text-sm text-ink-muted">
+              Completa el pago en la ventana de Mercado Pago. Al acreditarse,
+              la cerramos y te mostramos la confirmación.
+            </p>
+          )}
+          <button
+            type="submit"
+            className="btn-primary"
+            disabled={loading || waitingPopup}
+          >
             {loading
-              ? "Redirigiendo…"
+              ? "Abriendo Mercado Pago…"
               : `Pagar ${formatPrice(total)} con Mercado Pago`}
           </button>
         </div>

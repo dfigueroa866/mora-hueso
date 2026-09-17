@@ -1,6 +1,7 @@
 "use client";
 
 export default function Error({
+  error,
   reset,
 }: {
   error: Error & { digest?: string };
@@ -14,6 +15,11 @@ export default function Error({
       <p className="mt-3 text-ink-muted">
         No se pudo cargar esta página. Intenta de nuevo.
       </p>
+      {error?.message ? (
+        <p className="mx-auto mt-3 max-w-md text-xs text-ink-muted">
+          {error.message}
+        </p>
+      ) : null}
       <button type="button" className="btn-primary mt-6" onClick={reset}>
         Reintentar
       </button>

@@ -31,6 +31,9 @@ type Profile = {
     total: number;
     status: string;
     createdAt: string;
+    mpPaymentId?: string | null;
+    mpStatus?: string | null;
+    mpStatusDetail?: string | null;
     items: { name: string; quantity: number }[];
   }[];
 };
@@ -329,13 +332,17 @@ export default function ProfilePage() {
                 <div>
                   <p className="font-medium">{o.trackingNumber}</p>
                   <p className="text-xs text-ink-muted">
-                    {format(new Date(o.createdAt), "d MMM yyyy · HH:mm", {
-                      locale: es,
-                    })}{" "}
+                    {Number.isNaN(new Date(o.createdAt).getTime())
+                      ? ""
+                      : format(new Date(o.createdAt), "d MMM yyyy · HH:mm", {
+                          locale: es,
+                        })}{" "}
                     · {orderStatusLabel(o.status)}
+                    {o.mpPaymentId ? ` · MP ${o.mpPaymentId}` : ""}
+                    {o.mpStatus ? ` · ${o.mpStatus}` : ""}
                   </p>
                   <p className="mt-1 text-sm text-ink-muted">
-                    {o.items
+                    {(o.items ?? [])
                       .map((i) => `${i.name} ×${i.quantity}`)
                       .join(", ")}
                   </p>

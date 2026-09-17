@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { SALES_STATUSES } from "@/lib/sales-report";
+import { syncPendingMercadoPagoOrders } from "@/lib/orders";
 import { preserveProductText } from "@/lib/text-encoding";
 
 export async function GET() {
@@ -9,6 +10,8 @@ export async function GET() {
   if (!admin) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
+
+  await syncPendingMercadoPagoOrders();
 
   const [products, orders, lowStock, salesAgg] = await Promise.all([
     prisma.product.findMany({ orderBy: { updatedAt: "desc" } }),
