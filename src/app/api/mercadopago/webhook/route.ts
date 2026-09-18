@@ -20,6 +20,26 @@ function signatureOk(req: NextRequest, dataId: string) {
   return true;
 }
 
+function notificationParts(req: NextRequest, body: Record<string, unknown>) {
+  const url = new URL(req.url);
+  const type = String(
+    body.type ||
+      body.topic ||
+      url.searchParams.get("type") ||
+      url.searchParams.get("topic") ||
+      ""
+  );
+  const data = body.data as { id?: string | number } | undefined;
+  const dataId = String(
+    data?.id ||
+      body.id ||
+      url.searchParams.get("data.id") ||
+      url.searchParams.get("id") ||
+      ""
+  );
+  return { type, dataId };
+}
+
 async function handlePaymentNotification(paymentId: string) {
   if (!hasMercadoPagoToken()) return;
   const payment = await getPaymentById(paymentId);
@@ -37,26 +57,16 @@ async function handlePaymentNotification(paymentId: string) {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json().catch(() => ({}));
-    const url = new URL(req.url);
-    const type =
-      body.type ||
-      body.topic ||
-      url.searchParams.get("type") ||
-      url.searchParams.get("topic");
-    const dataId = String(
-      body?.data?.id ||
-        body?.id ||
-        url.searchParams.get("data.id") ||
-        url.searchParams.get("id") ||
-        ""
-    );
+    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+    const { type, dataId } = notificationParts(req, body);
 
     if ((type === "payment" || type === "topic_payment") && dataId) {
       signatureOk(req, dataId);
       await handlePaymentNotification(dataId);
     }
 
+    // merchant_order: Mercado Pago exige ACK 200; el estado del pedido
+    // se confirma con la notificación payment o con /api/mercadopago/sync.
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("MP webhook error", err);
@@ -64,18 +74,17 @@ export async function POST(req: NextRequest) {
     if (name === "InvalidWebhookSignatureError") {
       return NextResponse.json({ error: "Firma inválida" }, { status: 401 });
     }
+    // ACK para que Mercado Pago no reintente en bucle por errores temporales.
     return NextResponse.json({ ok: true });
   }
 }
 
 export async function GET(req: NextRequest) {
-  const url = new URL(req.url);
-  const topic = url.searchParams.get("topic") || url.searchParams.get("type");
-  const id = url.searchParams.get("id") || url.searchParams.get("data.id");
+  const { type, dataId } = notificationParts(req, {});
   try {
-    if ((topic === "payment" || topic === "topic_payment") && id) {
-      signatureOk(req, id);
-      await handlePaymentNotification(id);
+    if ((type === "payment" || type === "topic_payment") && dataId) {
+      signatureOk(req, dataId);
+      await handlePaymentNotification(dataId);
     }
   } catch (err) {
     console.error("MP IPN error", err);
