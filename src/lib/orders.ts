@@ -104,9 +104,41 @@ export async function applyMercadoPagoStatus(
   if (next === "paid") {
     return markOrderPaid({ orderId, mpPaymentId: paymentId, mp: payment });
   }
+
+  const order = await prisma.order.findUnique({ where: { id: orderId } });
+  if (!order) return null;
+
   if (next === "cancelled") {
-    await markOrderCancelled(orderId);
+    const samePayment =
+      Boolean(paymentId) &&
+      Boolean(order.mpPaymentId) &&
+      order.mpPaymentId === paymentId;
+    // No tumbar un cobro ya acreditado si llega otro intento rechazado.
+    if (
+      (order.status === "paid" || order.status === "shipped") &&
+      !samePayment
+    ) {
+      return prisma.order.update({
+        where: { id: orderId },
+        data: returnFields(payment),
+        include: { items: true },
+      });
+    }
+    if (order.status !== "cancelled") {
+      if (order.status === "pending_payment" || samePayment) {
+        await restoreOrderStock(orderId);
+      }
+    }
+    return prisma.order.update({
+      where: { id: orderId },
+      data: {
+        status: order.status === "shipped" ? "shipped" : "cancelled",
+        ...returnFields(payment),
+      },
+      include: { items: true },
+    });
   }
+
   return prisma.order.update({
     where: { id: orderId },
     data: returnFields(payment),

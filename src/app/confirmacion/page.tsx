@@ -144,12 +144,26 @@ function ConfirmationInner() {
   }
 
   const status = order?.status || "";
-  const isPaid = status === "paid" || status === "shipped" || status === "confirmed";
-  const isPending = status === "pending_payment" || statusHint === "pending";
+  const mpStatus = String(order?.mpStatus || "").toLowerCase();
+  const mpRejected = [
+    "rejected",
+    "cancelled",
+    "canceled",
+    "refunded",
+    "charged_back",
+  ].includes(mpStatus);
+  const isPaid =
+    !mpRejected &&
+    (status === "paid" || status === "shipped" || status === "confirmed");
   const isCancelled =
+    mpRejected ||
     status === "cancelled" ||
     statusHint === "rejected" ||
     statusHint === "failure";
+  const isPending =
+    !isPaid &&
+    !isCancelled &&
+    (status === "pending_payment" || statusHint === "pending");
 
   return (
     <div className="section-pad max-w-2xl">
