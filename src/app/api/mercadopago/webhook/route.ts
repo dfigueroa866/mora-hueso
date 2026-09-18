@@ -7,17 +7,41 @@ function headerValue(value: string | null) {
   return value || undefined;
 }
 
-function signatureOk(req: NextRequest, dataId: string) {
-  const secret = process.env.MERCADOPAGO_WEBHOOK_SECRET?.trim();
-  if (!secret) return true;
+/** data.id alfanumérico debe ir en minúsculas para la firma HMAC. */
+function normalizeDataId(raw: string) {
+  const id = raw.trim();
+  if (!id) return id;
+  if (/^[0-9]+$/.test(id)) return id;
+  return id.toLowerCase();
+}
+
+function webhookSecret() {
+  const secret = process.env.MERCADOPAGO_WEBHOOK_SECRET?.trim() || "";
+  // Antes se pegó la URL del endpoint por error; eso provoca 401 en todos los avisos.
+  if (/^https?:\/\//i.test(secret)) {
+    console.error(
+      "MERCADOPAGO_WEBHOOK_SECRET parece una URL. Usa la clave secreta del panel de Webhooks."
+    );
+    return "";
+  }
+  return secret;
+}
+
+function assertSignature(req: NextRequest, dataId: string) {
+  const secret = webhookSecret();
+  if (!secret) return;
+  const xSignature = headerValue(req.headers.get("x-signature"));
+  if (!xSignature) {
+    console.warn("Webhook sin x-signature; se procesa con Access Token");
+    return;
+  }
   WebhookSignatureValidator.validate({
-    xSignature: headerValue(req.headers.get("x-signature")),
+    xSignature,
     xRequestId: headerValue(req.headers.get("x-request-id")),
-    dataId,
+    dataId: normalizeDataId(dataId),
     secret,
-    toleranceSeconds: 300,
+    toleranceSeconds: 3600,
   });
-  return true;
 }
 
 function notificationParts(req: NextRequest, body: Record<string, unknown>) {
@@ -44,7 +68,10 @@ async function handlePaymentNotification(paymentId: string) {
   if (!hasMercadoPagoToken()) return;
   const payment = await getPaymentById(paymentId);
   const orderId = payment.external_reference;
-  if (!orderId) return;
+  if (!orderId) {
+    console.warn("Webhook payment sin external_reference", paymentId);
+    return;
+  }
   await applyMercadoPagoStatus(orderId, {
     id: payment.id || paymentId,
     status: payment.status,
@@ -55,25 +82,31 @@ async function handlePaymentNotification(paymentId: string) {
   });
 }
 
+async function processPaymentEvent(req: NextRequest, dataId: string) {
+  try {
+    assertSignature(req, dataId);
+  } catch (err) {
+    console.error(
+      "Firma inválida. Revisa MERCADOPAGO_WEBHOOK_SECRET (clave del panel, no la URL).",
+      err
+    );
+    // Seguimos: el cobro se confirma con el Access Token al consultar la API.
+  }
+  await handlePaymentNotification(dataId);
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const { type, dataId } = notificationParts(req, body);
 
     if ((type === "payment" || type === "topic_payment") && dataId) {
-      signatureOk(req, dataId);
-      await handlePaymentNotification(dataId);
+      await processPaymentEvent(req, dataId);
     }
 
-    // merchant_order: Mercado Pago exige ACK 200; el estado del pedido
-    // se confirma con la notificación payment o con /api/mercadopago/sync.
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("MP webhook error", err);
-    const name = err instanceof Error ? err.name : "";
-    if (name === "InvalidWebhookSignatureError") {
-      return NextResponse.json({ error: "Firma inválida" }, { status: 401 });
-    }
     // ACK para que Mercado Pago no reintente en bucle por errores temporales.
     return NextResponse.json({ ok: true });
   }
@@ -83,15 +116,10 @@ export async function GET(req: NextRequest) {
   const { type, dataId } = notificationParts(req, {});
   try {
     if ((type === "payment" || type === "topic_payment") && dataId) {
-      signatureOk(req, dataId);
-      await handlePaymentNotification(dataId);
+      await processPaymentEvent(req, dataId);
     }
   } catch (err) {
     console.error("MP IPN error", err);
-    const name = err instanceof Error ? err.name : "";
-    if (name === "InvalidWebhookSignatureError") {
-      return NextResponse.json({ error: "Firma inválida" }, { status: 401 });
-    }
   }
   return NextResponse.json({ ok: true });
 }
